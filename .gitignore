@@ -1,6 +1,14 @@
 .DS_Store
 .env
-/node_modules/
+*.log
+
+# Monorepo dependencies
+**/node_modules/
+
+# Common build outputs
+**/dist/
+**/build/
+**/.cache/
 
 # React Router
 /.react-router/
