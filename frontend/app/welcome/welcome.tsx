@@ -1,22 +1,43 @@
 export function Welcome() {
   return (
     <main className="container py-5">
-      <div className="row justify-content-center">
-        <div className="col-12 col-lg-8">
-          <section className="text-center mb-4">
-            <h1 className="display-5 fw-bold">
-              SPRT
-            </h1>
-          </section>
-
-          <section className="d-flex flex-column flex-md-row align-items-center justify-content-between">
-            <div className="col-12 col-md-6">
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit. Accusamus, corrupti odio! Harum omnis sit quidem saepe nisi odio veritatis, neque ex numquam nemo eaque, ab aliquam excepturi hic assumenda sequi!
+      <div className="row justify-content-center align-items-stretch">
+          
+          <div className="col-12 col-lg-6 pe-lg-2 p-0 mb-lg-4">
+            <div className="card col-12 p-0">
+              <h5 className="card-header">Калькуляторы</h5>
+              <div className="card-body">
+                <ul className="bullet-list">
+                  <li><a href="/?section=integrals">Интегралы</a></li>
+                  <li><a href="/?section=derivatives">Дифференциалы</a></li>
+                  <li><a href="/?section=matrices">Матрицы</a></li>
+                </ul>
+              </div>
             </div>
+          </div>
 
-            <p className="col-12 col-md-6">img here</p>
-          </section>
-        </div>
+          <div className="col-12 col-lg-6 d-flex ps-lg-2 p-0 my-4 my-lg-0 mb-lg-4">
+            <div className="card col-12 p-0 align-self-stretch">
+              <h5 className="card-header">Космос</h5>
+              <div className="card-body">
+                <ul className="bullet-list">
+                  <li><a href="/?section=impulse">Расчёт импульса</a></li>
+                  <li><a href="/?section=micro">Расчёт толщины защиты от микрометеоритов</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="card col-12 p-0">
+            <h5 className="card-header">Термех</h5>
+            <div className="card-body">
+              <ul className="bullet-list">
+                <li><a href="/?section=2body">Задача 2-х тел</a></li>
+                <li><a href="/?section=3body">Задача 3-х тел</a></li>
+              </ul>
+            </div>
+          </div>
+
       </div>
     </main>
   );

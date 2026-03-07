@@ -12,7 +12,6 @@
     "@react-router/node": "7.12.0",
     "@react-router/serve": "7.12.0",
     "bootstrap": "^5.3.8",
-    "boxicons": "^2.1.4",
     "isbot": "^5.1.31",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
