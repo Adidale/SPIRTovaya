@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import "./navbar.css";
+
+const AUTH_STORAGE_KEY = "spirtovaya-authenticated";
 
 const navLinks = [
   { id: "space", to: "/?section=space", label: "Космос", icon: "bx bx-rocket" },
@@ -8,10 +11,27 @@ const navLinks = [
 ];
 
 export function Navbar() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const syncAuthState = () => {
+      setIsLoggedIn(localStorage.getItem(AUTH_STORAGE_KEY) === "true");
+    };
+
+    syncAuthState();
+    window.addEventListener("storage", syncAuthState);
+    window.addEventListener("spirtovaya-auth-changed", syncAuthState);
+
+    return () => {
+      window.removeEventListener("storage", syncAuthState);
+      window.removeEventListener("spirtovaya-auth-changed", syncAuthState);
+    };
+  }, []);
+
   return (
     <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
       <div className="container">  
-        <Link className="navbar-brand" to="/">SPRT</Link>
+        <Link className="navbar-brand fs-3 fw-semibold" to="/">SPRT</Link>
         
         <button className="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#navbarOffcanvasLg" aria-controls="navbarOffcanvasLg" aria-label="Toggle navigation">
           <span className="navbar-toggler-icon"></span>
@@ -28,7 +48,13 @@ export function Navbar() {
               </li>
             ))}
             <li className="nav-item">
-              <Link to="/?auth=login" className="mx-2 btn btn-primary">Войти</Link>
+              {isLoggedIn ? (
+                <Link to="/" className="ms-4 btn btn-outline-light rounded-circle p-2 d-flex align-items-center justify-content-center" title="Profile">
+                  <i className="bx bxs-user fs-4"></i>
+                </Link>
+              ) : (
+                <Link to="/login" className="ms-4 btn btn-primary">Войти</Link>
+              )}
             </li>
           </ul>
         </div>
@@ -50,7 +76,14 @@ export function Navbar() {
               </li>
             ))}
             <li className="nav-item my-2">
-              <Link to="/?auth=login" className="btn btn-primary col-12">Войти</Link>
+              {isLoggedIn ? (
+                <Link to="/" className="btn btn-outline-light col-12 d-flex align-items-center justify-content-center gap-2">
+                  <i className="bx bxs-user fs-5"></i>
+                  Profile
+                </Link>
+              ) : (
+                <Link to="/login" className="btn btn-primary col-12">Войти</Link>
+              )}
             </li>
           </ul>
         </div>

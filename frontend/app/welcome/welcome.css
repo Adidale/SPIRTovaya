@@ -1,0 +1,30 @@
+@import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@200..900&display=swap");
+
+.hero-text {
+  font-size: 5vw;
+  font-family: "Unbounded", sans-serif;
+  font-optical-sizing: auto;
+  font-style: normal;
+  color: #44ed4a;
+}
+
+.btn-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  background-color: #44ed4a;
+  color: #000;
+}
+
+.btn-hero:hover {
+  background-color: #3bcc3f;
+  color: #000;
+}
+
+.calculator-lottie {
+  display: block;
+  width: min(100%, 300px);
+  height: auto;
+  margin: 1.5rem auto 0;
+}
