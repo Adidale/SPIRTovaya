@@ -10,4 +10,4 @@ pyton -m venv venv
 pip install -r requirements.txt
 
 //для запуска локального сервера
-python main.py
+python src/main.py
