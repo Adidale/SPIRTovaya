@@ -16,10 +16,18 @@ python src/main.py
 
 
 //ЕНДПОИНТЫ
+    auth:
     /register(username: str, password: str, re_password: str) - регистрация пользователей в дб
     /login(username: str, password: str) - вход в профиль на сайте
     /me - профиль пользователя (пока что возвращает только id и username)
     /logout - выйти из аккаунта
-    
+
+    shit:
+    / - тестовый ендпоинт
+    /contacts - тестовый ендпоинт
+    /about - тестовый ендпоинт
+
+    calc:
+    /derivative(expr: str, var: str = "x") - берет производную отвыражения expr по переменной var, возвращает текст в формате str и LaTeX
     
     
