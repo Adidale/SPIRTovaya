@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from db.session import engine, Base
 from core.security import auth
 from api import auth as auth_api, calc, pages
+from fastapi.middleware.cors import CORSMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -12,6 +13,11 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"] #адрес фронта
+)
 
 # Обработка ошибок AuthX
 auth.handle_errors(app)

@@ -15,3 +15,4 @@ async def calculate(expr: str, var: str = "x"):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+

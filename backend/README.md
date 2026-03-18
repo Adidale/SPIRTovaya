@@ -11,3 +11,15 @@ pip install -r requirements.txt
 
 //для запуска локального сервера
 python src/main.py
+
+//после этого переходим в браузер по ссылке http://localhost:8000/docs (стандартная документация FastAPI)
+
+
+//ЕНДПОИНТЫ
+    /register(username: str, password: str, re_password: str) - регистрация пользователей в дб
+    /login(username: str, password: str) - вход в профиль на сайте
+    /me - профиль пользователя (пока что возвращает только id и username)
+    /logout - выйти из аккаунта
+    
+    
+    
