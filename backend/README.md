@@ -16,6 +16,7 @@ python src/main.py
 
 
 //ЕНДПОИНТЫ
+
     auth:
     /register(username: str, password: str, re_password: str) - регистрация пользователей в дб
     /login(username: str, password: str) - вход в профиль на сайте
