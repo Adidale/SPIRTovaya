@@ -1,14 +1,7 @@
 import type { Route } from "./+types/register";
 import { useState, type FormEvent } from "react";
 import { Form, Link, useNavigate } from "react-router";
-
-const AUTH_STORAGE_KEY = "spirtovaya-authenticated";
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-
-type RegisterApiResponse = {
-  message?: string;
-  detail?: string;
-};
+import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
 
 async function registerUser(
   username: string,
@@ -18,31 +11,21 @@ async function registerUser(
 ) {
   const response = await fetch(`${API_BASE_URL}/register`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({
-      username,
-      email,
-      password,
-      re_password: rePassword,
-    }),
+    body: JSON.stringify({ username, email, password, re_password: rePassword }),
   });
 
-  let payload: RegisterApiResponse | null = null;
+  let payload: unknown = null;
   try {
-    payload = (await response.json()) as RegisterApiResponse;
+    payload = await response.json();
   } catch {
     payload = null;
   }
 
   if (!response.ok) {
-    throw new Error(payload?.detail ?? "Не удалось зарегистрироваться.");
-  }
-
-  if (payload?.detail) {
-    throw new Error(payload.detail);
+    const detail = getFastApiErrorDetail(payload);
+    throw new Error(detail || "Не удалось зарегистрироваться.");
   }
 
   return payload;
@@ -50,8 +33,8 @@ async function registerUser(
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Регистрация | SPRT" },
-    { name: "description", content: "Регистрация в SPRT." },
+    { title: "Регистрация | СПРТ" },
+    { name: "description", content: "Регистрация в СПРТ." },
   ];
 }
 
@@ -90,10 +73,12 @@ export default function RegisterPage() {
     setIsSubmitting(true);
 
     try {
-      await registerUser(username, email, password, confirmPassword);
-      localStorage.setItem(AUTH_STORAGE_KEY, "true");
-      window.dispatchEvent(new Event("spirtovaya-auth-changed"));
-      navigate("/");
+      const result = await registerUser(username, email, password, confirmPassword);
+      const verifyUrl = (result as { verify_url?: string })?.verify_url;
+      if (verifyUrl) {
+        console.info("%c[DEV] Verification URL:", "color: #0d6efd; font-weight: bold", verifyUrl);
+      }
+      navigate("/login?registered=1");
     } catch (error) {
       const message =
         error instanceof Error
@@ -109,7 +94,7 @@ export default function RegisterPage() {
     <section className="rounded-4 border bg-white p-4 p-md-5 shadow-sm">
       <h1 className="h3 mb-3 text-center">Создать аккаунт</h1>
       <p className="text-center text-secondary mb-4">
-        Зарегистрируйтесь чтобы начать использовать SPRT.
+        Зарегистрируйтесь чтобы начать использовать СПРТ.
       </p>
 
       <Form onSubmit={handleSubmit} className="d-flex flex-column gap-3">

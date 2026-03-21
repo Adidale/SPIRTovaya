@@ -5,8 +5,8 @@ import { Form, Link } from "react-router";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Восстановление пароля | SPRT" },
-    { name: "description", content: "Страница восстановления пароля в SPRT." },
+    { title: "Восстановление пароля | СПРТ" },
+    { name: "description", content: "Страница восстановления пароля в СПРТ." },
   ];
 }
 

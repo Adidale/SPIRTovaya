@@ -35,16 +35,20 @@ async def register(data:UserSchemaRegister, db: AsyncSession = Depends(get_db)):
 
         token = auth.create_access_token(uid=str(new_user.id))
         verification_url = f"http://localhost:8000/verify/{token}"
-        message = MessageSchema(
-            subject="Подтверждение регистрации",
-            recipients=[data.email],
-            body=f"Перейдите по ссылке для активации: {verification_url}",
-            subtype=MessageType.html
-        )
-        fm = FastMail(conf)
-        await fm.send_message(message)
 
-        return {"message": "Проверьте почту для подтверждения аккаунта"}
+        try:
+            message = MessageSchema(
+                subject="Подтверждение регистрации",
+                recipients=[data.email],
+                body=f"Перейдите по ссылке для активации: {verification_url}",
+                subtype=MessageType.html
+            )
+            fm = FastMail(conf)
+            await fm.send_message(message)
+        except Exception as e:
+            print(f"WARNING: Email could not be sent: {e}")
+
+        return {"message": "Проверьте почту для подтверждения аккаунта", "verify_url": verification_url}
     else:
         raise HTTPException(status_code=400, detail='incorrect password or password does not match')
 
@@ -85,8 +89,6 @@ async def login(data: UserSchemaLogin, response: Response, db: AsyncSession = De
 
     if not user or not HashHelper.verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    if not user.is_active:
-        raise HTTPException(status_code=401, detail='unactive user')
 
     token = auth.create_access_token(uid=str(user.id))
     auth.set_access_cookies(token, response)
