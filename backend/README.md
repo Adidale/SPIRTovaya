@@ -30,5 +30,3 @@ python src/main.py
 
     calc:
     /derivative(expr: str, var: str = "x") - берет производную отвыражения expr по переменной var, возвращает текст в формате str и LaTeX
-    
-    
