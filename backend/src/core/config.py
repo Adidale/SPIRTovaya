@@ -1,3 +1,4 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from authx import AuthXConfig
 
 config = AuthXConfig( # Конфигурация AuthX
@@ -8,3 +9,4 @@ config = AuthXConfig( # Конфигурация AuthX
     JWT_COOKIE_SECURE=True,
     JWT_COOKIE_SAMESITE="lax"
 )
+

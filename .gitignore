@@ -5,6 +5,13 @@
 # Monorepo dependencies
 **/node_modules/
 
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/venv/
+**/.venv/
+
 # Common build outputs
 **/dist/
 **/build/
