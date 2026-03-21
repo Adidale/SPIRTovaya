@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import "./navbar.css";
 
 const AUTH_STORAGE_KEY = "spirtovaya-authenticated";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const navLinks = [
   { id: "space", to: "/?section=space", label: "Космос", icon: "bx bx-rocket" },
@@ -14,17 +15,37 @@ export function Navbar() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    const syncAuthState = () => {
-      setIsLoggedIn(localStorage.getItem(AUTH_STORAGE_KEY) === "true");
+    const syncAuthState = async () => {
+      const isStoredAuth = localStorage.getItem(AUTH_STORAGE_KEY) === "true";
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/me`, {
+          method: "GET",
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          setIsLoggedIn(true);
+          return;
+        }
+      } catch {
+        // Ignore network errors and fallback to local flag.
+      }
+
+      setIsLoggedIn(isStoredAuth);
     };
 
-    syncAuthState();
-    window.addEventListener("storage", syncAuthState);
-    window.addEventListener("spirtovaya-auth-changed", syncAuthState);
+    const syncAuthStateListener = () => {
+      void syncAuthState();
+    };
+
+    void syncAuthState();
+    window.addEventListener("storage", syncAuthStateListener);
+    window.addEventListener("spirtovaya-auth-changed", syncAuthStateListener);
 
     return () => {
-      window.removeEventListener("storage", syncAuthState);
-      window.removeEventListener("spirtovaya-auth-changed", syncAuthState);
+      window.removeEventListener("storage", syncAuthStateListener);
+      window.removeEventListener("spirtovaya-auth-changed", syncAuthStateListener);
     };
   }, []);
 
