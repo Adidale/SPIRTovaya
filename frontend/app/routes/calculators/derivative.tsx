@@ -419,25 +419,29 @@ export default function DerivativePage() {
           </div>
 
           {/* Actions */}
-          <div className="d-flex gap-2 align-items-center flex-wrap">
-            <button
-              className="btn btn-dark px-4"
-              onClick={handleCalculate}
-              disabled={loading || !expr.trim()}
-            >
-              {loading
-                ? <><span className="spinner-border spinner-border-sm me-2" />Вычисляется…</>
-                : "Вычислить f′(x)"}
-            </button>
-            <button
-              className="btn btn-outline-danger"
-              onClick={() => { setExpr(""); setDerivResult(null); setGraphPoints([]); setError(null); }}
-            >
-              Очистить
-            </button>
-            <button className="btn btn-outline-secondary" onClick={handleBackspace}>
-              <i className="bi bi-backspace"></i>
-            </button>
+          <div className="d-flex align-items-center justify-content-between">
+            <div className="d-flex gap-2 align-items-center flex-wrap">
+              <button
+                className="btn btn-dark px-4"
+                onClick={handleCalculate}
+                disabled={loading || !expr.trim()}
+              >
+                {loading
+                  ? <><span className="spinner-border spinner-border-sm me-2" />Вычисляется…</>
+                  : "Вычислить f′(x)"}
+              </button>
+              <button
+                className="btn btn-outline-danger"
+                onClick={() => { setExpr(""); setDerivResult(null); setGraphPoints([]); setError(null); }}
+              >
+                Очистить
+              </button>
+              <button className="btn btn-outline-secondary" onClick={handleBackspace}>
+                <i className="bi bi-backspace"></i>
+              </button>
+            </div>
+
+            <a href="#" className="btn btn-primary">Сохранить</a>
           </div>
 
           {error && <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div>}
@@ -458,7 +462,7 @@ export default function DerivativePage() {
           {graphPoints.length > 0 && (
             <div className="card border rounded-3 p-3">
               <p className="fw-medium small text-secondary mb-2">
-                График — прокрутите для навигации. Значения вне диапазона указывают на сингулярности
+                График f(x) и f'(x)
               </p>
               <div
                 ref={graphScrollRef}

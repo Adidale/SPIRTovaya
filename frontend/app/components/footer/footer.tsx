@@ -2,7 +2,7 @@ export function Footer() {
   return (
     <footer className="py-5 bg-dark">
       <div className="container">
-        <div className="row align-items-start justify-content-between">
+        <div className="row align-items-start justify-content-between mx-2 mx-sm-0">
           <a href="#" className="col-12 col-md-3 text-decoration-none text-white fs-1 fw-semibold mb-5 mb-md-0">СПРТ</a>
 
           <ul className="col-12 col-sm-6 col-md-3 list-unstyled">
@@ -103,7 +103,7 @@ export function Footer() {
 
         <div className="d-flex flex-column flex-sm-row align-items-center justify-content-between text-secondary mt-md-5">
           <div className="d-flex flex-column flex-sm-row align-items-center justify-content-between">
-            <p className="mb-sm-0 me-lg-4">
+            <p className="mb-sm-0 me-lg-4 col-12 col-sm-6 col-lg-8">
               &copy; {new Date().getFullYear()} СПРТ. Все права защищены.
             </p>
             <button className="btn btn-outline-secondary col-12 col-sm-5">

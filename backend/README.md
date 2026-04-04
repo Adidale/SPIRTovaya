@@ -5,9 +5,10 @@ pyton -m venv venv
 
 //вход в виртуальное окружение
 .\venv\Scripts\activate
+// Mac command: source venv/bin/activate
 
 //установка всех зависимостей из файла requirements.txt
-pip install -r requirements.txt
+// Skip for mac if already installed: pip install -r requirements.txt
 
 //для запуска локального сервера
 python src/main.py
