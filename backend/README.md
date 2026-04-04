@@ -22,6 +22,7 @@ python src/main.py
     /register(username: str, password: str, re_password: str) - регистрация пользователей в дб
     /login(username: str, password: str) - вход в профиль на сайте
     /me - профиль пользователя (пока что возвращает только id и username)
+    /me/edit(new_fullname: str | None = None, new_dob: date | None = None, new_description: str | None = None) - изменить/добавить дополнительные сведения о пользователе
     /logout - выйти из аккаунта
 
     shit:

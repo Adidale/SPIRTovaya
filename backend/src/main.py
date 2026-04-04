@@ -28,7 +28,7 @@ auth.handle_errors(app)
 
 # Public routes that don't need JWT refresh
 PUBLIC_PATHS = {"/register", "/login", "/docs", "/openapi.json", "/redoc",
-                "/calculate/derivative", "/calculate/evaluate"}
+                "/calculate/derivative", "/calculate/evaluate"} #может помешать при сохранении данных вычислений в истории пользователя
 
 # Middleware для обновления токенов
 @app.middleware('http')
