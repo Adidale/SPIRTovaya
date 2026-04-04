@@ -1,6 +1,6 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Response
-from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
-from jwt.utils import der_to_raw_signature
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete, func
@@ -10,19 +10,37 @@ from core.security import auth, HashHelper
 from datetime import datetime, timezone, date
 from .schemas import UserSchemaLogin, UserSchemaRegister
 
+# Email verification via SMTP — disabled in dev; uncomment imports + conf + block in register() to enable.
+# from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+#
+# conf = ConnectionConfig(
+#     MAIL_USERNAME="sprtcompanyone@gmail.com",
+#     MAIL_PASSWORD="grksfyjtmaizjorx",
+#     MAIL_FROM="sprtcompanyone@gmail.com",
+#     MAIL_PORT=587,
+#     MAIL_SERVER="smtp.gmail.com",
+#     MAIL_FROM_NAME="SPRTCompany",
+#     MAIL_STARTTLS=True,
+#     MAIL_SSL_TLS=False,
+#     USE_CREDENTIALS=True
+# )
+
 router = APIRouter(tags=['Users'])
 
-conf = ConnectionConfig(
-    MAIL_USERNAME="sprtcompanyone@gmail.com",
-    MAIL_PASSWORD="grksfyjtmaizjorx",
-    MAIL_FROM="sprtcompanyone@gmail.com",
-    MAIL_PORT=587,
-    MAIL_SERVER="smtp.gmail.com",
-    MAIL_FROM_NAME="SPRTCompany",
-    MAIL_STARTTLS=True,
-    MAIL_SSL_TLS=False,
-    USE_CREDENTIALS=True
-)
+# backend/ (same level as database.db when app cwd is backend/)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_DEV_VERIFICATION_LOG = _BACKEND_DIR / "dev_verification_links.txt"
+
+
+def _emit_verification_link_dev(email: str, verification_url: str) -> None:
+    """Print verification URL to server console and append to dev_verification_links.txt (gitignored)."""
+    line = f"{datetime.now(timezone.utc).isoformat()} | {email} | {verification_url}\n"
+    print(f"\n[DEV] Verification link for {email}:\n{verification_url}\n", flush=True)
+    try:
+        with _DEV_VERIFICATION_LOG.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError as exc:
+        print(f"[DEV] Could not write {_DEV_VERIFICATION_LOG}: {exc}", flush=True)
 
 @router.post('/register')
 async def register(data:UserSchemaRegister, db: AsyncSession = Depends(get_db)):
@@ -39,19 +57,26 @@ async def register(data:UserSchemaRegister, db: AsyncSession = Depends(get_db)):
         token = auth.create_access_token(uid=str(new_user.id))
         verification_url = f"http://localhost:8000/verify/{token}"
 
-        try:
-            message = MessageSchema(
-                subject="Подтверждение регистрации",
-                recipients=[data.email],
-                body=f"Перейдите по ссылке для активации: {verification_url}",
-                subtype=MessageType.html
-            )
-            fm = FastMail(conf)
-            await fm.send_message(message)
-        except Exception as e:
-            print(f"WARNING: Email could not be sent: {e}")
+        _emit_verification_link_dev(data.email, verification_url)
 
-        return {"message": "Проверьте почту для подтверждения аккаунта"}
+        # try:
+        #     message = MessageSchema(
+        #         subject="Подтверждение регистрации",
+        #         recipients=[data.email],
+        #         body=f"Перейдите по ссылке для активации: {verification_url}",
+        #         subtype=MessageType.html
+        #     )
+        #     fm = FastMail(conf)
+        #     await fm.send_message(message)
+        # except Exception as e:
+        #     print(f"WARNING: Email could not be sent: {e}")
+
+        return {
+            "message": (
+                "Аккаунт создан. Ссылка для подтверждения выведена в консоль сервера "
+                f"и в файл {_DEV_VERIFICATION_LOG.name} (папка backend/)."
+            )
+        }
     else:
         raise HTTPException(status_code=400, detail='incorrect password or password does not match')
 
@@ -91,6 +116,9 @@ async def login(data: UserSchemaLogin, response: Response, db: AsyncSession = De
 
     if not user or not HashHelper.verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="unactive user")
 
     token = auth.create_access_token(uid=str(user.id))
     auth.set_access_cookies(token, response)

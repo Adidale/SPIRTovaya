@@ -1,6 +1,7 @@
 .DS_Store
 .env
 *.log
+**/dev_verification_links.txt
 
 # Monorepo dependencies
 **/node_modules/

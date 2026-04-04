@@ -1,5 +1,7 @@
 import math
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
 from sympy import symbols, diff, sympify, latex, lambdify
 from .schemas import EvaluateSchema
 
@@ -24,7 +26,7 @@ async def calculate_derivative(expr: str, var: str = "x"):
 
 
 @router.get("/evaluate")
-async def evaluate_function(data: EvaluateSchema):
+async def evaluate_function(data: Annotated[EvaluateSchema, Depends()]):
     try:
         x = symbols(data.var)
         parsed = sympify(data.expr)
@@ -44,13 +46,13 @@ async def evaluate_function(data: EvaluateSchema):
                     # Keep large finite values — frontend clips them for singularity display
                     entry["y"] = round(min(max(y, -1e8), 1e8), 6)
             except Exception:
-                raise {'message':'exception'}
+                pass
             try:
                 dy = float(df(x_val))
                 if math.isfinite(dy):
                     entry["dy"] = round(min(max(dy, -1e8), 1e8), 6)
             except Exception:
-                raise {'message':'exception'}
+                pass
             points.append(entry)
 
         return {"points": points}
