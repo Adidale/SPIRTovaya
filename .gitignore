@@ -3,6 +3,10 @@
 *.log
 **/dev_verification_links.txt
 
+# Временные файлы SQLite
+*.db-shm
+*.db-wal
+
 # Monorepo dependencies
 **/node_modules/
 
@@ -17,6 +21,7 @@
 **/dist/
 **/build/
 **/.cache/
+.vscode/
 
 # React Router
 /.react-router/
