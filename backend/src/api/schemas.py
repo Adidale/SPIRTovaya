@@ -11,6 +11,14 @@ class UserSchemaLogin(BaseModel):
     email: EmailStr = Field(max_length=100)
     password: str = Field(min_length=8, max_length=20)
 
+
+class UsernameUpdateSchema(BaseModel):
+    username: str = Field(min_length=5, max_length=20)
+
+
+class EmailUpdateSchema(BaseModel):
+    email: EmailStr = Field(max_length=100)
+
 class EvaluateSchema(BaseModel):
     expr: str = Field(..., description='Math expression', min_length=1, max_length=512)
     x_min: float = Field(-10.0, description='Start x point', ge=-1e6, le=1e6)
@@ -29,6 +37,11 @@ class IntegralRequestSchema(BaseModel):
     expr: str = Field(..., example="x**2 + cos(x)", description="Математическое выражение для интегрирования")
     var: str = Field(default="x", example="x", description="Переменная интегрирования")
 
+
+class DerivativeRequestSchema(BaseModel):
+    expr: str = Field(..., example="x**2 + cos(x)", description="Математическое выражение для дифференцирования")
+    var: str = Field(default="x", example="x", description="Переменная дифференцирования")
+
 # Схема для одного шага решения
 class IntegrationStepSchema(BaseModel):
     step_number: int
@@ -43,6 +56,13 @@ class IntegralResponseSchema(BaseModel):
     total_steps: int
     steps: List[IntegrationStepSchema]
     final_answer: str  # Ответ с добавленным + C
+
+
+class DerivativeResponseSchema(BaseModel):
+    expression: str
+    total_steps: int
+    steps: List[IntegrationStepSchema]
+    final_answer: str
 
 class PasswordChangeSchema(BaseModel):
     old_password: str

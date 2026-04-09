@@ -15,156 +15,289 @@ router = APIRouter(prefix="/calculate", tags=['Calculations'])
 'OrthogonalPolyRule', 'PartsRule', 'PiecewiseRule', 'PolylogRule', 'PowerRule', 'ReciprocalRule', 'ReciprocalSqrtQuadraticRule', 'RewriteRule', 'Rule', 'Sec2Rule', 'SecTanRule', 'ShiRule', 'SiRule', 'SinRule',
 'SinhRule', 'SqrtQuadraticDenomRule', 'SqrtQuadraticRule', 'TrigRule', 'TrigSubstitutionRule', 'URule', 'UpperGammaRule']'''
 
+# def format_steps_json(step, var, start_index=1):
+#     steps = []
+#     current_idx = start_index
+#
+#     raw_expr = getattr(step, 'integrand', getattr(step, 'context', step))
+#     before_latex = f"\\int {latex(raw_expr)} \\, d{var}"
+#     after_math = getattr(step, 'integral', None)
+#
+#     if isinstance(step, list):
+#         if not step: return []
+#         return format_steps_json(step[0], var, start_index)
+#
+#     elif isinstance(step, RewriteRule):
+#         sub = getattr(step, 'substep', None)
+#         if sub:
+#             # Не просто добавляем описание, а ОБЯЗАТЕЛЬНО идем глубже
+#             steps.extend(format_steps_json(sub, var, start_index=start_index))
+#
+#     elif isinstance(step, ExpRule):
+#         after_math = getattr(step, 'integral', exp(var))
+#
+#         steps.append({
+#             "step_number": current_idx,
+#             "rule": "exp_rule",
+#             "description": "Интеграл от экспоненты равен самой экспоненте",
+#             "before": before_latex,
+#             "after": latex(after_math)
+#         })
+#
+#     elif isinstance(step, (SinRule, CosRule)):
+#         after_math = getattr(step, 'integral', None)
+#         if after_math is None:
+#             from sympy import sin, cos
+#             after_math = -cos(var) if isinstance(step, SinRule) else sin(var)
+#
+#         steps.append({
+#             "step_number": current_idx,
+#             "rule": "trig_rule",
+#             "description": "Интегрирование тригонометрической функции",
+#             "before": before_latex,
+#             "after": latex(after_math)
+#         })
+#
+#     elif isinstance(step, PowerRule):
+#         if after_math is None: after_math = (step.base ** (step.exp + 1)) / (step.exp + 1)
+#         steps.append({
+#             "step_number": current_idx, "rule": "power_rule",
+#             "description": "Правило степени",
+#             "before": before_latex, "after": latex(after_math)
+#         })
+#
+#     elif isinstance(step, ConstantRule):
+#         const = getattr(step, 'constant', 1)
+#         steps.append({
+#             "step_number": current_idx, "rule": "constant_rule",
+#             "description": "Интеграл константы",
+#             "before": before_latex, "after": latex(const * var)
+#         })
+#
+#     elif isinstance(step, ConstantTimesRule):
+#         const = getattr(step, 'constant', 1)
+#         steps.append({
+#             "step_number": current_idx, "rule": "constant_times_rule",
+#             "description": f"Вынос константы {latex(const)}",
+#             "before": before_latex,
+#             "after": f"{latex(const)} \\cdot \\int {latex(getattr(step.substep, 'integrand', ''))} \\, d{var}"
+#         })
+#         steps.extend(format_steps_json(step.substep, var, start_index=len(steps) + start_index))
+#
+#     elif isinstance(step, AddRule):
+#         substeps = getattr(step, 'substeps', [])
+#         steps.append({
+#             "step_number": current_idx, "rule": "sum_rule",
+#             "description": "Разбиение суммы",
+#             "before": before_latex,
+#             "after": " + ".join([f"\\int {latex(getattr(s, 'integrand', s))} \\, d{var}" for s in substeps])
+#         })
+#         for substep in substeps:
+#             steps.extend(format_steps_json(substep, var, start_index=len(steps) + start_index))
+#
+#     elif isinstance(step, URule):
+#         u_var = step.u_var
+#         u_func = step.u_func
+#         sub_step = getattr(step, 'substep', None)
+#
+#         # Получаем чистый интеграл от u (без иксов)
+#         u_integrand = getattr(sub_step, 'integrand', 'f(u)')
+#
+#         # Очищаем описание от технических скобок \left \right
+#         description = (f"Введем замену переменной: пусть ${latex(u_var)} = {latex(u_func)}$. "
+#                        f"Тогда $d{latex(u_var)} = {latex(u_func.diff(var))} \, d{var}$")
+#         description = description.replace('\\left(', '(').replace('\\right)', ')')
+#
+#         res_u = manualintegrate(step.substep, u_var)
+#
+#         steps.append({
+#             "step_number": len(steps) + start_index,
+#             "rule": "u_substitution_revert",
+#             "description": f"Выполним обратную замену: подставим ${latex(u_func)}$ вместо ${latex(u_var)}$",
+#             "before": latex(res_u),  # Теперь здесь будет результат через u
+#             "after": latex(after_math)  # А здесь уже финальный результат через x
+#         })
+#
+#         # Рекурсивно добавляем шаги для интеграла по u
+#         if sub_step:
+#             steps.extend(format_steps_json(sub_step, u_var, start_index=len(steps) + start_index + 1))
+#
+#         # Добавляем шаг обратной замены, чтобы юзер видел переход u -> x
+#         steps.append({
+#             "step_number": len(steps) + start_index + 1,
+#             "rule": "u_substitution_revert",
+#             "description": f"Выполним обратную замену: подставим ${latex(u_func)}$ вместо ${latex(u_var)}$",
+#             "before": f"{latex(getattr(sub_step, 'integral', ''))}",
+#             "after": latex(after_math) if after_math else "..."
+#         })
+#
+#         # --- ИСПРАВЛЕННЫЙ PartsRule ---
+#
+#     elif isinstance(step, PartsRule):
+#         u = step.u
+#         dv = step.dv
+#         v_step = step.v_step
+#
+#         # 1. Извлекаем v и du
+#         v_val = getattr(v_step, 'integral', dv.integrate(var))
+#         du_val = u.diff(var)
+#         v_du_expr = (v_val * du_val).simplify()
+#
+#         # 2. Добавляем основной шаг "по частям"
+#         steps.append({
+#             "step_number": current_idx,
+#             "rule": "parts_rule",
+#             "description": f"Интегрирование по частям: $u = {latex(u)}$, $dv = {latex(dv)} dx \\Rightarrow du = {latex(du_val)} dx, v = {latex(v_val)}$.",
+#             "before": before_latex,
+#             "after": f"{latex(u * v_val)} - \\int {latex(v_du_expr)} \\, d{var}"
+#         })
+#
+#         # 3. Рекурсивно ищем шаги для интеграла (v * du)
+#         sub_list = getattr(step, 'substeps', [])
+#         actual_substep = sub_list if (isinstance(sub_list, list) and len(sub_list) > 0) else sub_list
+#
+#         # Запускаем рекурсию
+#         inner_steps = []
+#         if actual_substep:
+#             inner_steps = format_steps_json(actual_substep, var, start_index=len(steps) + start_index)
+#
+#         # ПРОВЕРКА: Если рекурсия не нашла шагов (как для интеграла от 1)
+#         if not inner_steps:
+#             steps.append({
+#                 "step_number": len(steps) + start_index,
+#                 "rule": "final_substep",
+#                 "description": "Вычислим оставшийся интеграл",
+#                 "before": f"\\int {latex(v_du_expr)} \\, d{var}",
+#                 "after": latex(v_du_expr.integrate(var))
+#             })
+#         else:
+#             steps.extend(inner_steps)
+#
+#     elif isinstance(step, AlternativeRule):
+#         # AlternativeRule содержит список стратегий в атрибуте alternatives.
+#         # Мы выбираем первую (обычно самую оптимальную) и продолжаем рекурсию.
+#         best_strategy = step.alternatives[0]
+#         return format_steps_json(best_strategy, var, start_index=current_idx)
+#
+#     else:
+#         print(f"DEBUG: Пропущено правило типа {type(step)}")
+#
+#     return steps
 
 def format_steps_json(step, var, start_index=1):
+    if isinstance(step, list):
+        all_steps = []
+        for s in step:
+            all_steps.extend(format_steps_json(s, var, start_index=start_index + len(all_steps)))
+        return all_steps
+
     steps = []
     current_idx = start_index
 
+    # Безопасное получение математики для LaTeX
     raw_expr = getattr(step, 'integrand', getattr(step, 'context', step))
-    before_latex = f"\\int {latex(raw_expr)} \\, d{var}"
+    before_latex = f"\\int {latex(raw_expr)} \\, d{latex(var)}"
     after_math = getattr(step, 'integral', None)
 
-    if isinstance(step, list):
-        if not step: return []
-        return format_steps_json(step[0], var, start_index)
+    if isinstance(step, URule):
+        u_var, u_func = step.u_var, step.u_func
+        sub_list = getattr(step, 'substeps', getattr(step, 'substep', []))
+        actual_sub = sub_list[0] if isinstance(sub_list, list) and sub_list else sub_list
 
-    elif isinstance(step, RewriteRule):
-        sub = getattr(step, 'substep', None)
-        if sub:
-            # Не просто добавляем описание, а ОБЯЗАТЕЛЬНО идем глубже
-            steps.extend(format_steps_json(sub, var, start_index=start_index))
-
-    elif isinstance(step, ExpRule):
-        after_math = getattr(step, 'integral', exp(var))
+        # Вычисляем промежуточный результат по u для шага обратной замены
+        from sympy.integrals.manualintegrate import manualintegrate
+        # Передаем только математическое выражение из actual_sub, а не само правило!
+        res_u = manualintegrate(getattr(actual_sub, 'integrand', actual_sub), u_var)
 
         steps.append({
-            "step_number": current_idx,
-            "rule": "exp_rule",
-            "description": "Интеграл от экспоненты равен самой экспоненте",
+            "step_number": current_idx, "rule": "u_substitution",
+            "description": f"Замена: $u = {latex(u_func)}$, тогда $du = {latex(u_func.diff(var))} dx$".replace('\\left(',
+                                                                                                               '(').replace(
+                '\\right)', ')'),
             "before": before_latex,
-            "after": latex(after_math)
+            "after": f"\\int {latex(getattr(actual_sub, 'integrand', 'f(u)'))} \\, d{latex(u_var)}"
         })
 
-    elif isinstance(step, (SinRule, CosRule)):
-        after_math = getattr(step, 'integral', None)
-        if after_math is None:
-            from sympy import sin, cos
-            after_math = -cos(var) if isinstance(step, SinRule) else sin(var)
+        steps.extend(format_steps_json(actual_sub, u_var, start_index=len(steps) + start_index))
+
+        # Теперь before не будет пустым, а after не будет None
+        steps.append({
+            "step_number": len(steps) + start_index, "rule": "u_substitution_revert",
+            "description": f"Обратная замена: подставим ${latex(u_func)}$ вместо $u$",
+            "before": latex(res_u),
+            "after": latex(res_u.subs(u_var, u_func))
+        })
+
+    # --- ИСПРАВЛЕННЫЙ PartsRule ---
+    elif isinstance(step, PartsRule):
+        u, dv, v_step = step.u, step.dv, step.v_step
+        # Берем результат v из v_step или считаем напрямую
+        v_val = getattr(v_step, 'integral', dv.integrate(var))
+
+        sub_list = getattr(step, 'substeps', [])
+        actual_sub = sub_list[0] if (isinstance(sub_list, list) and sub_list) else sub_list
+        v_du = (v_val * u.diff(var)).simplify()
 
         steps.append({
-            "step_number": current_idx,
-            "rule": "trig_rule",
-            "description": "Интегрирование тригонометрической функции",
+            "step_number": current_idx, "rule": "parts_rule",
+            "description": f"По частям: $u={latex(u)}, dv={latex(dv)}dx \Rightarrow v={latex(v_val)}$",
             "before": before_latex,
-            "after": latex(after_math)
+            "after": f"{latex(u * v_val)} - \\int {latex(v_du)} \\, d{latex(var)}"
         })
 
+        if actual_sub:
+            # Рекурсивно добавляем шаги для интеграла v*du
+            inner = format_steps_json(actual_sub, var, start_index=len(steps) + start_index)
+            if not inner:  # Если это простейший интеграл, добавляем его вычисление вручную
+                steps.append({
+                    "step_number": len(steps) + start_index,
+                    "rule": "final_substep",
+                    "description": "Вычислим оставшийся интеграл",
+                    "before": f"\\int {latex(v_du)} \\, d{latex(var)}",
+                    "after": latex(v_du.integrate(var))
+                })
+            else:
+                steps.extend(inner)
+
+    # 3. СУММА (AddRule)
+    elif isinstance(step, AddRule):
+        substeps = getattr(step, 'substeps', [])
+        after_parts = [f"\\int {latex(getattr(s, 'integrand', s))} \\, d{latex(var)}" for s in substeps]
+        steps.append({
+            "step_number": current_idx, "rule": "sum_rule",
+            "description": "Разбиение на сумму интегралов",
+            "before": before_latex, "after": " + ".join(after_parts)
+        })
+        for s in substeps:
+            steps.extend(format_steps_json(s, var, start_index=len(steps) + start_index))
+
+    # 4. БАЗОВЫЕ ПРАВИЛА (Степень, Exp, Sin, Cos)
     elif isinstance(step, PowerRule):
-        if after_math is None: after_math = (step.base ** (step.exp + 1)) / (step.exp + 1)
         steps.append({
             "step_number": current_idx, "rule": "power_rule",
             "description": "Правило степени",
-            "before": before_latex, "after": latex(after_math)
-        })
-
-    elif isinstance(step, ConstantRule):
-        const = getattr(step, 'constant', 1)
-        steps.append({
-            "step_number": current_idx, "rule": "constant_rule",
-            "description": "Интеграл константы",
-            "before": before_latex, "after": latex(const * var)
-        })
-
-    elif isinstance(step, ConstantTimesRule):
-        const = getattr(step, 'constant', 1)
-        steps.append({
-            "step_number": current_idx, "rule": "constant_times_rule",
-            "description": f"Вынос константы {latex(const)}",
             "before": before_latex,
-            "after": f"{latex(const)} \\cdot \\int {latex(getattr(step.substep, 'integrand', ''))} \\, d{var}"
+            "after": latex(after_math if after_math else (step.base ** (step.exp + 1)) / (step.exp + 1))
+        })
+    elif isinstance(step, ExpRule):
+        steps.append({
+            "step_number": current_idx, "rule": "exp_rule", "description": "Интеграл экспоненты",
+            "before": before_latex, "after": latex(after_math if after_math else exp(var))
+        })
+    elif isinstance(step, ConstantTimesRule):
+        c = getattr(step, 'constant', 1)
+        steps.append({
+            "step_number": current_idx, "rule": "mul_rule", "description": f"Вынос константы {latex(c)}",
+            "before": before_latex,
+            "after": f"{latex(c)} \\cdot \\int {latex(getattr(step.substep, 'integrand', ''))} \\, d{latex(var)}"
         })
         steps.extend(format_steps_json(step.substep, var, start_index=len(steps) + start_index))
 
-    elif isinstance(step, AddRule):
-        substeps = getattr(step, 'substeps', [])
-        steps.append({
-            "step_number": current_idx, "rule": "sum_rule",
-            "description": "Разбиение суммы",
-            "before": before_latex,
-            "after": " + ".join([f"\\int {latex(getattr(s, 'integrand', s))} \\, d{var}" for s in substeps])
-        })
-        for substep in substeps:
-            steps.extend(format_steps_json(substep, var, start_index=len(steps) + start_index))
-
-    elif isinstance(step, URule):
-        u_var = step.u_var
-        u_func = step.u_func
-        # В 1.14.0 это список, берем первый элемент
-        sub_list = getattr(step, 'substeps', [])
-        actual_substep = sub_list[0] if sub_list else step
-
-        steps.append({
-            "step_number": current_idx,
-            "rule": "u_substitution",
-            "description": f"Замена: $u = {latex(u_func)}$, тогда $du = {latex(u_func.diff(var))} dx$",
-            "before": before_latex,
-            "after": f"\\int {latex(getattr(actual_substep, 'integrand', 'f(u)'))} \\, du"
-        })
-
-        # Рекурсия: ПЕРЕДАЕМ ОБЪЕКТ ИЗ СПИСКА, А НЕ ВЕСЬ СПИСОК
-        for s in sub_list:
-            steps.extend(format_steps_json(s, u_var, start_index=len(steps) + start_index))
-
-        # --- ИСПРАВЛЕННЫЙ PartsRule ---
-
-    elif isinstance(step, PartsRule):
-        u = step.u
-        dv = step.dv
-        v_step = step.v_step
-
-        # 1. Извлекаем v и du
-        v_val = getattr(v_step, 'integral', dv.integrate(var))
-        du_val = u.diff(var)
-        v_du_expr = (v_val * du_val).simplify()
-
-        # 2. Добавляем основной шаг "по частям"
-        steps.append({
-            "step_number": current_idx,
-            "rule": "parts_rule",
-            "description": f"Интегрирование по частям: $u = {latex(u)}$, $dv = {latex(dv)} dx \\Rightarrow du = {latex(du_val)} dx, v = {latex(v_val)}$.",
-            "before": before_latex,
-            "after": f"{latex(u * v_val)} - \\int {latex(v_du_expr)} \\, d{var}"
-        })
-
-        # 3. Рекурсивно ищем шаги для интеграла (v * du)
-        sub_list = getattr(step, 'substeps', [])
-        actual_substep = sub_list if (isinstance(sub_list, list) and len(sub_list) > 0) else sub_list
-
-        # Запускаем рекурсию
-        inner_steps = []
-        if actual_substep:
-            inner_steps = format_steps_json(actual_substep, var, start_index=len(steps) + start_index)
-
-        # ПРОВЕРКА: Если рекурсия не нашла шагов (как для интеграла от 1)
-        if not inner_steps:
-            steps.append({
-                "step_number": len(steps) + start_index,
-                "rule": "final_substep",
-                "description": "Вычислим оставшийся интеграл",
-                "before": f"\\int {latex(v_du_expr)} \\, d{var}",
-                "after": latex(v_du_expr.integrate(var))
-            })
-        else:
-            steps.extend(inner_steps)
-
+    # 5. АЛЬТЕРНАТИВЫ И УПРОЩЕНИЯ
     elif isinstance(step, AlternativeRule):
-        # AlternativeRule содержит список стратегий в атрибуте alternatives.
-        # Мы выбираем первую (обычно самую оптимальную) и продолжаем рекурсию.
-        best_strategy = step.alternatives[0]
-        return format_steps_json(best_strategy, var, start_index=current_idx)
-
-    else:
-        print(f"DEBUG: Пропущено правило типа {type(step)}")
+        steps.extend(format_steps_json(step.alternatives[0], var, start_index=current_idx))
+    elif isinstance(step, RewriteRule):
+        if step.substeps: steps.extend(format_steps_json(step.substeps, var, start_index=current_idx))
 
     return steps
 

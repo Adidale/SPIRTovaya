@@ -7,7 +7,13 @@ from db.session import get_db, AsyncSessionLocal
 from models import User
 from core.security import auth, HashHelper
 from datetime import datetime, timezone, date
-from .schemas import UserSchemaLogin, UserSchemaRegister, PasswordChangeSchema
+from .schemas import (
+    EmailUpdateSchema,
+    PasswordChangeSchema,
+    UserSchemaLogin,
+    UserSchemaRegister,
+    UsernameUpdateSchema,
+)
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 
 
@@ -25,6 +31,9 @@ conf = ConnectionConfig(
 )
 
 router = APIRouter(tags=['Users'])
+
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_DEV_VERIFICATION_LOG = _BACKEND_DIR / "dev_verification_links.txt"
 
 
 def _emit_verification_link_dev(email: str, verification_url: str) -> None:
@@ -159,6 +168,58 @@ async def edit_me(user: User = Depends(auth.get_current_subject),
         print(f"Error: {e}")  # Логируем реальную ошибку
 
         raise HTTPException(status_code=400, detail="Update failed")
+
+
+@router.patch('/me/username')
+async def update_username(
+    data: UsernameUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(auth.get_current_subject),
+):
+    username = data.username.strip()
+    if username == user.username:
+        return {"message": "Имя пользователя не изменилось", "username": user.username}
+
+    existing = await db.execute(select(User).filter(User.username == username, User.id != user.id))
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Пользователь с таким именем уже существует")
+
+    user.username = username
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return {"message": "Имя пользователя обновлено", "username": user.username}
+
+
+@router.patch('/me/email')
+async def update_email(
+    data: EmailUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(auth.get_current_subject),
+):
+    email = data.email.strip().lower()
+    if email == user.email:
+        return {"message": "Email не изменился", "email": user.email}
+
+    existing = await db.execute(select(User).filter(User.email == email, User.id != user.id))
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="Пользователь с таким email уже существует")
+
+    user.email = email
+    user.is_active = False
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    token = auth.create_access_token(uid=str(user.id))
+    verification_url = f"http://localhost:8000/verify/{token}"
+    _emit_verification_link_dev(user.email, verification_url)
+
+    return {
+        "message": "Email обновлен. Подтвердите новый адрес.",
+        "email": user.email,
+        "active": user.is_active,
+    }
 
 @router.post('/change-password')
 async def change_password(

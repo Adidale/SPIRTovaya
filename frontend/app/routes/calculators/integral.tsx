@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { Route } from "./+types/derivative";
+import type { Route } from "./+types/integral";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import {
@@ -15,8 +15,6 @@ import {
 import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
 import { KatexMixedDescription } from "~/components/katex-mixed-description";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
 type Category = "numpad" | "basic" | "trig" | "calculus" | "vars";
 
 type PadButton = {
@@ -25,131 +23,132 @@ type PadButton = {
   offset: number;
 };
 
-type DerivResult = { plain_text: string; latex: string };
-type DerivativeStep = {
+type IntegrationStep = {
   step_number: number;
   rule: string;
   description: string;
   before: string;
   after: string;
 };
-type DerivativeStepsResult = {
+
+type IntegralResult = {
   expression: string;
   total_steps: number;
-  steps: DerivativeStep[];
+  steps: IntegrationStep[];
   final_answer: string;
 };
-type GraphPoint  = { x: number; y: number | null; dy: number | null };
 
-// ─── Pad config ───────────────────────────────────────────────────────────────
+type GraphPoint = { x: number; y: number | null; integral: number | null };
 
 const PAD: Record<Category, PadButton[]> = {
   numpad: [
-    { label: "7",       insert: "7",  offset: 1 },
-    { label: "8",       insert: "8",  offset: 1 },
-    { label: "9",       insert: "9",  offset: 1 },
-    { label: "\\div",   insert: "/",  offset: 1 },
-    { label: "4",       insert: "4",  offset: 1 },
-    { label: "5",       insert: "5",  offset: 1 },
-    { label: "6",       insert: "6",  offset: 1 },
-    { label: "\\times", insert: "*",  offset: 1 },
-    { label: "1",       insert: "1",  offset: 1 },
-    { label: "2",       insert: "2",  offset: 1 },
-    { label: "3",       insert: "3",  offset: 1 },
-    { label: "-",       insert: "-",  offset: 1 },
-    { label: "0",       insert: "0",  offset: 1 },
-    { label: ".",       insert: ".",  offset: 1 },
-    { label: "()",      insert: "()", offset: 1 },
-    { label: "+",       insert: "+",  offset: 1 },
+    { label: "7", insert: "7", offset: 1 },
+    { label: "8", insert: "8", offset: 1 },
+    { label: "9", insert: "9", offset: 1 },
+    { label: "\\div", insert: "/", offset: 1 },
+    { label: "4", insert: "4", offset: 1 },
+    { label: "5", insert: "5", offset: 1 },
+    { label: "6", insert: "6", offset: 1 },
+    { label: "\\times", insert: "*", offset: 1 },
+    { label: "1", insert: "1", offset: 1 },
+    { label: "2", insert: "2", offset: 1 },
+    { label: "3", insert: "3", offset: 1 },
+    { label: "-", insert: "-", offset: 1 },
+    { label: "0", insert: "0", offset: 1 },
+    { label: ".", insert: ".", offset: 1 },
+    { label: "()", insert: "()", offset: 1 },
+    { label: "+", insert: "+", offset: 1 },
   ],
   basic: [
-    { label: "\\sqrt{\\square}",            insert: "sqrt()",    offset: 5 },
-    { label: "\\sqrt[3]{\\square}",         insert: "**(1/3)",   offset: 0 },
-    { label: "\\square^{2}",               insert: "**2",        offset: 3 },
-    { label: "\\square^{n}",               insert: "**",         offset: 2 },
-    { label: "\\frac{\\square}{\\square}", insert: "()/( )",     offset: 1 },
-    { label: "\\log_{n}(\\square)",        insert: "log(, n)",   offset: 4 },
-    { label: "\\ln(\\square)",             insert: "log()",      offset: 4 },
-    { label: "|\\square|",                 insert: "Abs()",      offset: 4 },
-    { label: "e^{\\square}",              insert: "exp()",       offset: 4 },
-    { label: "\\pi",                       insert: "pi",         offset: 2 },
-    { label: "e",                          insert: "E",          offset: 1 },
-    { label: "\\infty",                    insert: "oo",         offset: 2 },
+    { label: "\\sqrt{\\square}", insert: "sqrt()", offset: 5 },
+    { label: "\\sqrt[3]{\\square}", insert: "**(1/3)", offset: 0 },
+    { label: "\\square^{2}", insert: "**2", offset: 3 },
+    { label: "\\square^{n}", insert: "**", offset: 2 },
+    { label: "\\frac{\\square}{\\square}", insert: "()/( )", offset: 1 },
+    { label: "\\log_{n}(\\square)", insert: "log(, n)", offset: 4 },
+    { label: "\\ln(\\square)", insert: "log()", offset: 4 },
+    { label: "|\\square|", insert: "Abs()", offset: 4 },
+    { label: "e^{\\square}", insert: "exp()", offset: 4 },
+    { label: "\\pi", insert: "pi", offset: 2 },
+    { label: "e", insert: "E", offset: 1 },
+    { label: "\\infty", insert: "oo", offset: 2 },
   ],
   trig: [
-    { label: "\\sin(\\square)",          insert: "sin()",  offset: 4 },
-    { label: "\\cos(\\square)",          insert: "cos()",  offset: 4 },
-    { label: "\\tan(\\square)",          insert: "tan()",  offset: 4 },
-    { label: "\\cot(\\square)",          insert: "cot()",  offset: 4 },
-    { label: "\\sec(\\square)",          insert: "sec()",  offset: 4 },
-    { label: "\\csc(\\square)",          insert: "csc()",  offset: 4 },
-    { label: "\\arcsin(\\square)",       insert: "asin()", offset: 5 },
-    { label: "\\arccos(\\square)",       insert: "acos()", offset: 5 },
-    { label: "\\arctan(\\square)",       insert: "atan()", offset: 5 },
+    { label: "\\sin(\\square)", insert: "sin()", offset: 4 },
+    { label: "\\cos(\\square)", insert: "cos()", offset: 4 },
+    { label: "\\tan(\\square)", insert: "tan()", offset: 4 },
+    { label: "\\cot(\\square)", insert: "cot()", offset: 4 },
+    { label: "\\sec(\\square)", insert: "sec()", offset: 4 },
+    { label: "\\csc(\\square)", insert: "csc()", offset: 4 },
+    { label: "\\arcsin(\\square)", insert: "asin()", offset: 5 },
+    { label: "\\arccos(\\square)", insert: "acos()", offset: 5 },
+    { label: "\\arctan(\\square)", insert: "atan()", offset: 5 },
     { label: "\\text{arccot}(\\square)", insert: "acot()", offset: 5 },
     { label: "\\text{arcsec}(\\square)", insert: "asec()", offset: 5 },
     { label: "\\text{arccsc}(\\square)", insert: "acsc()", offset: 5 },
   ],
   calculus: [
-    { label: "\\frac{d}{dx}[\\square]",      insert: "diff(, x)",            offset: 5  },
-    { label: "\\frac{d^2}{dx^2}[\\square]",  insert: "diff(, x, 2)",         offset: 5  },
-    { label: "\\int\\square\\,dx",           insert: "integrate(, x)",       offset: 10 },
-    { label: "\\int_a^b\\square\\,dx",       insert: "integrate(, (x,a,b))", offset: 10 },
-    { label: "\\lim_{x\\to 0}\\square",      insert: "limit(, x, 0)",        offset: 6  },
-    { label: "\\lim_{x\\to 0^-}\\square",   insert: "limit(, x, 0, '-')",   offset: 6  },
-    { label: "\\lim_{x\\to 0^+}\\square",   insert: "limit(, x, 0, '+')",   offset: 6  },
-    { label: "\\sum_{x=1}^{n}\\square",      insert: "Sum(, (x, 1, n))",     offset: 4  },
-    { label: "\\prod_{x=1}^{n}\\square",     insert: "product(, (x,1,n))",   offset: 8  },
+    { label: "\\frac{d}{dx}[\\square]", insert: "diff(, x)", offset: 5 },
+    { label: "\\frac{d^2}{dx^2}[\\square]", insert: "diff(, x, 2)", offset: 5 },
+    { label: "\\int\\square\\,dx", insert: "integrate(, x)", offset: 10 },
+    { label: "\\int_a^b\\square\\,dx", insert: "integrate(, (x,a,b))", offset: 10 },
+    { label: "\\lim_{x\\to 0}\\square", insert: "limit(, x, 0)", offset: 6 },
+    { label: "\\lim_{x\\to 0^-}\\square", insert: "limit(, x, 0, '-')", offset: 6 },
+    { label: "\\lim_{x\\to 0^+}\\square", insert: "limit(, x, 0, '+')", offset: 6 },
+    { label: "\\sum_{x=1}^{n}\\square", insert: "Sum(, (x, 1, n))", offset: 4 },
+    { label: "\\prod_{x=1}^{n}\\square", insert: "product(, (x,1,n))", offset: 8 },
     { label: "\\frac{\\partial}{\\partial x}[\\square]", insert: "diff(, x)", offset: 5 },
-    { label: "\\nabla",                      insert: "gradient",             offset: 8  },
-    { label: "\\Delta\\square",              insert: "laplacian()",          offset: 10 },
+    { label: "\\nabla", insert: "gradient", offset: 8 },
+    { label: "\\Delta\\square", insert: "laplacian()", offset: 10 },
   ],
   vars: [
-    { label: "x",        insert: "x",        offset: 1 },
-    { label: "y",        insert: "y",        offset: 1 },
-    { label: "z",        insert: "z",        offset: 1 },
-    { label: "t",        insert: "t",        offset: 1 },
-    { label: "n",        insert: "n",        offset: 1 },
-    { label: "a",        insert: "a",        offset: 1 },
-    { label: "b",        insert: "b",        offset: 1 },
-    { label: "c",        insert: "c",        offset: 1 },
-    { label: "\\alpha",  insert: "alpha",    offset: 5 },
-    { label: "\\beta",   insert: "beta",     offset: 4 },
-    { label: "\\theta",  insert: "theta",    offset: 5 },
-    { label: "\\lambda", insert: "lambda_",  offset: 7 },
+    { label: "x", insert: "x", offset: 1 },
+    { label: "y", insert: "y", offset: 1 },
+    { label: "z", insert: "z", offset: 1 },
+    { label: "t", insert: "t", offset: 1 },
+    { label: "n", insert: "n", offset: 1 },
+    { label: "a", insert: "a", offset: 1 },
+    { label: "b", insert: "b", offset: 1 },
+    { label: "c", insert: "c", offset: 1 },
+    { label: "\\alpha", insert: "alpha", offset: 5 },
+    { label: "\\beta", insert: "beta", offset: 4 },
+    { label: "\\theta", insert: "theta", offset: 5 },
+    { label: "\\lambda", insert: "lambda_", offset: 7 },
   ],
 };
 
 const CATEGORY_LABELS: Record<Category, string> = {
-  numpad:   "123",
-  basic:    "Basic",
-  trig:     "Trig",
+  numpad: "123",
+  basic: "Basic",
+  trig: "Trig",
   calculus: "Calculus",
-  vars:     "xyz",
+  vars: "xyz",
 };
-
-// ─── LaTeX helpers ────────────────────────────────────────────────────────────
 
 function matchParen(s: string, openIdx: number): number {
   let depth = 0;
   for (let i = openIdx; i < s.length; i++) {
     if (s[i] === "(") depth++;
-    else if (s[i] === ")") { depth--; if (depth === 0) return i; }
+    else if (s[i] === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
   }
   return -1;
 }
 
 function wrapBraces(s: string, funcName: string, latexCmd: string): string {
-  const token = funcName + "(";
-  let result = s, pos = 0;
+  const token = `${funcName}(`;
+  let result = s;
+  let pos = 0;
   while (true) {
     const idx = result.indexOf(token, pos);
     if (idx === -1) break;
-    const open  = idx + funcName.length;
+    const open = idx + funcName.length;
     const close = matchParen(result, open);
     if (close === -1) break;
     const inner = result.slice(open + 1, close);
-    const repl  = `${latexCmd}{${inner}}`;
+    const repl = `${latexCmd}{${inner}}`;
     result = result.slice(0, idx) + repl + result.slice(close + 1);
     pos = idx + repl.length;
   }
@@ -158,23 +157,31 @@ function wrapBraces(s: string, funcName: string, latexCmd: string): string {
 
 function convertLog(s: string): string {
   const token = "log(";
-  let result = s, pos = 0;
+  let result = s;
+  let pos = 0;
   while (true) {
     const idx = result.indexOf(token, pos);
     if (idx === -1) break;
-    const open  = idx + 3;
+    const open = idx + 3;
     const close = matchParen(result, open);
     if (close === -1) break;
     const inside = result.slice(open + 1, close);
-    let comma = -1, depth = 0;
+    let comma = -1;
+    let depth = 0;
     for (let i = 0; i < inside.length; i++) {
       if (inside[i] === "(") depth++;
       else if (inside[i] === ")") depth--;
-      else if (inside[i] === "," && depth === 0) { comma = i; break; }
+      else if (inside[i] === "," && depth === 0) {
+        comma = i;
+        break;
+      }
     }
-    const repl = comma !== -1
-      ? `\\log_{${inside.slice(comma + 1).trim()}}\\!\\left(${inside.slice(0, comma).trim()}\\right)`
-      : `\\ln\\!\\left(${inside}\\right)`;
+    const repl =
+      comma !== -1
+        ? `\\log_{${inside.slice(comma + 1).trim()}}\\!\\left(${inside
+            .slice(0, comma)
+            .trim()}\\right)`
+        : `\\ln\\!\\left(${inside}\\right)`;
     result = result.slice(0, idx) + repl + result.slice(close + 1);
     pos = idx + repl.length;
   }
@@ -196,14 +203,21 @@ function pythonToLatex(py: string): string {
   s = s.replace(/\blimit\(([^,)]+),\s*x,\s*0,\s*['"][+]['"]\)/g, "\\lim_{x\\to 0^+}$1");
   s = s.replace(/\blimit\(([^,)]+),\s*x,\s*0\)/g, "\\lim_{x\\to 0}$1");
   const invTrig: [string, string][] = [
-    ["asin","\\arcsin"], ["acos","\\arccos"], ["atan","\\arctan"],
-    ["acot","\\operatorname{arccot}"], ["asec","\\operatorname{arcsec}"],
-    ["acsc","\\operatorname{arccsc}"],
+    ["asin", "\\arcsin"],
+    ["acos", "\\arccos"],
+    ["atan", "\\arctan"],
+    ["acot", "\\operatorname{arccot}"],
+    ["asec", "\\operatorname{arcsec}"],
+    ["acsc", "\\operatorname{arccsc}"],
   ];
   for (const [p, l] of invTrig) s = s.replace(new RegExp(`\\b${p}\\b`, "g"), l);
   const trig: [string, string][] = [
-    ["sin","\\sin"], ["cos","\\cos"], ["tan","\\tan"],
-    ["cot","\\cot"], ["sec","\\sec"], ["csc","\\csc"],
+    ["sin", "\\sin"],
+    ["cos", "\\cos"],
+    ["tan", "\\tan"],
+    ["cot", "\\cot"],
+    ["sec", "\\sec"],
+    ["csc", "\\csc"],
   ];
   for (const [p, l] of trig) s = s.replace(new RegExp(`\\b${p}\\b`, "g"), l);
   s = s.replace(/([A-Za-z_]\w*|\d+)\*\*(\d+)/g, "$1^{$2}");
@@ -223,31 +237,22 @@ function renderLatexInline(tex: string): string {
   }
 }
 
-// ─── Graph helpers ────────────────────────────────────────────────────────────
-
-/**
- * Compute a display Y domain using the 2nd–98th percentile of the data,
- * so singularities are visible (values fly off the edge) but don't crush
- * the rest of the curve.
- */
 function computeYDomain(points: GraphPoint[]): [number, number] {
   const ys = points
-    .flatMap((p) => [p.y, p.dy])
+    .flatMap((p) => [p.y, p.integral])
     .filter((v): v is number => v !== null)
     .sort((a, b) => a - b);
 
   if (!ys.length) return [-10, 10];
 
-  const lo    = ys[Math.max(0, Math.floor(ys.length * 0.02))];
-  const hi    = ys[Math.min(ys.length - 1, Math.ceil(ys.length * 0.98) - 1)];
+  const lo = ys[Math.max(0, Math.floor(ys.length * 0.02))];
+  const hi = ys[Math.min(ys.length - 1, Math.ceil(ys.length * 0.98) - 1)];
   const range = Math.max(Math.abs(hi - lo), 1);
-  const pad   = range * 0.15;
-
-  // Always show both quadrants — ensure the domain spans across y = 0
+  const pad = range * 0.15;
   const rawMin = Math.floor(lo - pad);
   const rawMax = Math.ceil(hi + pad);
   const domainMin = Math.min(rawMin, -Math.ceil(range * 0.15 + 1));
-  const domainMax = Math.max(rawMax,  Math.ceil(range * 0.15 + 1));
+  const domainMax = Math.max(rawMax, Math.ceil(range * 0.15 + 1));
 
   return [domainMin, domainMax];
 }
@@ -257,49 +262,43 @@ function getRuleLabel(rule: string): string {
     exp_rule: "Правило экспоненты",
     trig_rule: "Тригонометрическое правило",
     power_rule: "Степенное правило",
-    constant_rule: "Производная константы",
+    constant_rule: "Интеграл константы",
     constant_times_rule: "Вынос константы",
     sum_rule: "Разбиение суммы",
+    u_substitution: "Подстановка",
+    parts_rule: "Интегрирование по частям",
+    rewrite_rule: "Переписывание выражения",
     expand_rule: "Раскрытие скобок",
-    log_rule: "Логарифмическое правило",
     special_function: "Без пошагового разбора",
   };
 
   return labels[rule] ?? rule.replaceAll("_", " ");
 }
 
-// ─── Meta ─────────────────────────────────────────────────────────────────────
-
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Derivatives | SPRT" },
-    { name: "description", content: "Derivative calculator with graph." },
+    { title: "Интегралы | СПРТ" },
+    { name: "description", content: "Калькулятор интегралов с графиком." },
   ];
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const GRAPH_MIN   = -50;
-const GRAPH_MAX   =  50;
-const GRAPH_PTS   = 500;
+const GRAPH_MIN = -50;
+const GRAPH_MAX = 50;
+const GRAPH_PTS = 500;
 const CHART_WIDTH = 2400;
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
-export default function DerivativePage() {
-  const [expr, setExpr]               = useState("");
-  const [activeTab, setActiveTab]     = useState<Category>("basic");
-  const [derivResult, setDerivResult] = useState<DerivResult | null>(null);
-  const [derivSteps, setDerivSteps]   = useState<DerivativeStepsResult | null>(null);
+export default function IntegralPage() {
+  const [expr, setExpr] = useState("");
+  const [activeTab, setActiveTab] = useState<Category>("basic");
+  const [integralResult, setIntegralResult] = useState<IntegralResult | null>(null);
   const [graphPoints, setGraphPoints] = useState<GraphPoint[]>([]);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const previewRef     = useRef<HTMLDivElement>(null);
-  const inputRef       = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const graphScrollRef = useRef<HTMLDivElement>(null);
 
-  // Live KaTeX preview
   useEffect(() => {
     if (!previewRef.current) return;
     try {
@@ -312,7 +311,6 @@ export default function DerivativePage() {
     }
   }, [expr]);
 
-  // Auto-scroll graph to center (x = 0) when data loads
   useEffect(() => {
     const el = graphScrollRef.current;
     if (!el || !graphPoints.length) return;
@@ -321,77 +319,89 @@ export default function DerivativePage() {
     });
   }, [graphPoints]);
 
-  // Insert text at textarea cursor
   const insertAtCursor = useCallback(
     (text: string, offset: number) => {
       const el = inputRef.current;
-      if (!el) { setExpr((p) => p + text); return; }
+      if (!el) {
+        setExpr((prev) => prev + text);
+        return;
+      }
       const start = el.selectionStart ?? expr.length;
-      const end   = el.selectionEnd   ?? expr.length;
-      const next  = expr.slice(0, start) + text + expr.slice(end);
+      const end = el.selectionEnd ?? expr.length;
+      const next = expr.slice(0, start) + text + expr.slice(end);
       setExpr(next);
       const cur = start + offset;
-      setTimeout(() => { el.focus(); el.setSelectionRange(cur, cur); }, 0);
+      setTimeout(() => {
+        el.focus();
+        el.setSelectionRange(cur, cur);
+      }, 0);
     },
     [expr],
   );
 
   const handleBackspace = useCallback(() => {
     const el = inputRef.current;
-    if (!el) { setExpr((p) => p.slice(0, -1)); return; }
+    if (!el) {
+      setExpr((prev) => prev.slice(0, -1));
+      return;
+    }
     const start = el.selectionStart ?? expr.length;
-    const end   = el.selectionEnd   ?? expr.length;
+    const end = el.selectionEnd ?? expr.length;
     let next: string;
     if (start !== end) {
       next = expr.slice(0, start) + expr.slice(end);
     } else if (start > 0) {
       next = expr.slice(0, start - 1) + expr.slice(start);
-    } else return;
+    } else {
+      return;
+    }
     setExpr(next);
     const cur = start === end ? start - 1 : start;
-    setTimeout(() => { el.focus(); el.setSelectionRange(cur, cur); }, 0);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(cur, cur);
+    }, 0);
   }, [expr]);
 
   const handleCalculate = async () => {
     if (!expr.trim()) return;
     setLoading(true);
     setError(null);
-    setDerivResult(null);
-    setDerivSteps(null);
+    setIntegralResult(null);
     setGraphPoints([]);
     try {
-      const [dRes, sRes, eRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/calculate/derivative?expr=${encodeURIComponent(expr)}&var=x`),
-        fetch(`${API_BASE_URL}/calculate/derivative-steps`, {
+      const [integralResponse, graphResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/calculate/integrate-steps`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ expr, var: "x" }),
         }),
-        fetch(`${API_BASE_URL}/calculate/evaluate?expr=${encodeURIComponent(expr)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`),
+        fetch(
+          `${API_BASE_URL}/calculate/integral-evaluate?expr=${encodeURIComponent(expr)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`,
+        ),
       ]);
-      let derivPayload: unknown = null;
-      let stepsPayload: unknown = null;
+
+      let integralPayload: unknown = null;
       let graphPayload: unknown = null;
       try {
-        derivPayload = await dRes.json();
+        integralPayload = await integralResponse.json();
       } catch {
-        derivPayload = null;
+        integralPayload = null;
       }
       try {
-        stepsPayload = await sRes.json();
-      } catch {
-        stepsPayload = null;
-      }
-      try {
-        graphPayload = await eRes.json();
+        graphPayload = await graphResponse.json();
       } catch {
         graphPayload = null;
       }
-      if (!dRes.ok) throw new Error(getFastApiErrorDetail(derivPayload) || "Ошибка вычисления производной.");
-      if (!sRes.ok) throw new Error(getFastApiErrorDetail(stepsPayload) || "Ошибка получения шагов решения.");
-      if (!eRes.ok) throw new Error(getFastApiErrorDetail(graphPayload) || "Ошибка построения графика.");
-      setDerivResult(derivPayload as DerivResult);
-      setDerivSteps(stepsPayload as DerivativeStepsResult);
+
+      if (!integralResponse.ok) {
+        throw new Error(getFastApiErrorDetail(integralPayload) || "Ошибка вычисления интеграла.");
+      }
+      if (!graphResponse.ok) {
+        throw new Error(getFastApiErrorDetail(graphPayload) || "Ошибка построения графика.");
+      }
+
+      setIntegralResult(integralPayload as IntegralResult);
       setGraphPoints((graphPayload as { points: GraphPoint[] }).points);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Неизвестная ошибка.");
@@ -406,22 +416,23 @@ export default function DerivativePage() {
     <div className="container-xl mt-4 mb-5">
       <nav aria-label="breadcrumb">
         <ol className="breadcrumb">
-          <li className="breadcrumb-item"><a href="/">Главная</a></li>
+          <li className="breadcrumb-item">
+            <a href="/">Главная</a>
+          </li>
           <li className="breadcrumb-item">Калькуляторы</li>
-          <li className="breadcrumb-item active" aria-current="page">Производные</li>
+          <li className="breadcrumb-item active" aria-current="page">
+            Интегралы
+          </li>
         </ol>
       </nav>
 
-      <h1 className="fw-bold mb-1 mt-4">Производные</h1>
+      <h1 className="fw-bold mb-1 mt-4">Интегралы</h1>
       <p className="text-secondary mb-4">
-        Постройте функцию с помощью клавиатуры и нажмите <em>Вычислить</em>.
+        Постройте подынтегральную функцию с помощью клавиатуры и нажмите <em>Вычислить</em>.
       </p>
 
       <div className="row g-4 pb-5">
-        {/* ── Left: Editor + Pad ───────────────────────────────────────── */}
         <div className="col-12 col-xl-7">
-
-          {/* KaTeX preview */}
           <div
             className="card border rounded-3 mb-2 px-4 py-3 bg-white overflow-auto text-center"
             style={{ minHeight: 76 }}
@@ -429,22 +440,23 @@ export default function DerivativePage() {
             <div ref={previewRef} />
           </div>
 
-          {/* Editable expression field */}
           <textarea
             ref={inputRef}
             value={expr}
             onChange={(e) => setExpr(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Backspace") { e.preventDefault(); handleBackspace(); }
+              if (e.key === "Backspace") {
+                e.preventDefault();
+                handleBackspace();
+              }
             }}
             className="form-control font-monospace mb-2"
             rows={2}
-            placeholder="f(x) — введите функцию или используйте клавиатуру…"
+            placeholder="f(x) — введите подынтегральную функцию или используйте клавиатуру…"
             spellCheck={false}
             style={{ resize: "none" }}
           />
 
-          {/* Category tabs */}
           <ul className="nav nav-pills gap-1 mb-2 flex-wrap">
             {(Object.keys(PAD) as Category[]).map((cat) => (
               <li className="nav-item" key={cat}>
@@ -459,11 +471,7 @@ export default function DerivativePage() {
             ))}
           </ul>
 
-          {/* Pad — always 4 columns */}
-          <div
-            className="d-grid gap-1 mb-3"
-            style={{ gridTemplateColumns: "repeat(4, 1fr)" }}
-          >
+          <div className="d-grid gap-1 mb-3" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
             {PAD[activeTab].map((btn, i) => (
               <button
                 key={i}
@@ -475,7 +483,6 @@ export default function DerivativePage() {
             ))}
           </div>
 
-          {/* Actions */}
           <div className="d-flex align-items-center justify-content-between">
             <div className="d-flex gap-2 align-items-center flex-wrap">
               <button
@@ -483,13 +490,23 @@ export default function DerivativePage() {
                 onClick={handleCalculate}
                 disabled={loading || !expr.trim()}
               >
-                {loading
-                  ? <><span className="spinner-border spinner-border-sm me-2" />Вычисляется…</>
-                  : "Вычислить f′(x)"}
+                {loading ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" />
+                    Вычисляется…
+                  </>
+                ) : (
+                  "Вычислить ∫f(x)dx"
+                )}
               </button>
               <button
                 className="btn btn-outline-danger"
-                onClick={() => { setExpr(""); setDerivResult(null); setDerivSteps(null); setGraphPoints([]); setError(null); }}
+                onClick={() => {
+                  setExpr("");
+                  setIntegralResult(null);
+                  setGraphPoints([]);
+                  setError(null);
+                }}
               >
                 Очистить
               </button>
@@ -498,16 +515,18 @@ export default function DerivativePage() {
               </button>
             </div>
 
-            <a href="#" className="btn btn-primary">Сохранить</a>
+            <a href="#" className="btn btn-primary">
+              Сохранить
+            </a>
           </div>
 
           {error && <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div>}
 
-          {derivSteps && derivSteps.steps.length > 0 && (
+          {integralResult && integralResult.steps.length > 0 && (
             <div className="card border rounded-3 p-3 mt-3">
               <h3 className="h6 fw-medium text-secondary mb-3">Шаги решения</h3>
               <div className="d-flex flex-column gap-3">
-                {derivSteps.steps.map((step) => (
+                {integralResult.steps.map((step) => (
                   <div key={`${step.step_number}-${step.rule}`} className="border rounded-3 p-3">
                     <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
                       <span className="badge text-bg-dark">Шаг {step.step_number}</span>
@@ -527,23 +546,21 @@ export default function DerivativePage() {
           )}
         </div>
 
-        {/* ── Right: Result + Graph ────────────────────────────────────── */}
         <div className="col-12 col-xl-5">
-
-          {derivResult && (
+          {integralResult && (
             <div className="card border rounded-3 p-4 mb-3">
-              <p className="text-secondary small mb-2 fw-medium">f'(x) =</p>
-              <KatexBlock latex={derivResult.latex} />
+              <p className="text-secondary small mb-2 fw-medium">∫f(x)dx =</p>
+              <KatexBlock latex={integralResult.final_answer} />
               <hr className="my-2" />
-              <code className="text-secondary small">{derivResult.plain_text}</code>
+              <code className="text-secondary small">
+                Шагов решения: {integralResult.total_steps}
+              </code>
             </div>
           )}
 
           {graphPoints.length > 0 && (
             <div className="card border rounded-3 p-3">
-              <p className="fw-medium small text-secondary mb-2">
-                График f(x) и f'(x)
-              </p>
+              <p className="fw-medium small text-secondary mb-2">График f(x) и F(x)</p>
               <div
                 ref={graphScrollRef}
                 style={{ overflowX: "scroll", overflowY: "hidden" }}
@@ -574,19 +591,18 @@ export default function DerivativePage() {
                     axisLine={false}
                     tickLine={false}
                   />
-                  {/* Mathematical axes at x=0 and y=0 */}
                   <ReferenceLine x={0} stroke="#374151" strokeWidth={1.5} />
                   <ReferenceLine y={0} stroke="#374151" strokeWidth={1.5} />
                   <Tooltip
                     formatter={(val: unknown, name: unknown) => [
                       typeof val === "number" ? val.toFixed(4) : "—",
-                      name === "y" ? "f(x)" : "f′(x)",
+                      name === "y" ? "f(x)" : "F(x)",
                     ]}
                     labelFormatter={(label: unknown) => `x = ${Number(label).toFixed(3)}`}
                     contentStyle={{ fontSize: 12 }}
                   />
                   <Legend
-                    formatter={(val: string) => (val === "y" ? "f(x)" : "f′(x)")}
+                    formatter={(value: string) => (value === "y" ? "f(x)" : "F(x)")}
                     wrapperStyle={{ fontSize: 12 }}
                   />
                   <Line
@@ -600,7 +616,7 @@ export default function DerivativePage() {
                   />
                   <Line
                     type="monotone"
-                    dataKey="dy"
+                    dataKey="integral"
                     stroke="#f59e0b"
                     dot={false}
                     strokeWidth={2}
@@ -613,10 +629,10 @@ export default function DerivativePage() {
             </div>
           )}
 
-          {!derivResult && !graphPoints.length && !loading && (
+          {!integralResult && !graphPoints.length && !loading && (
             <div className="card border rounded-3 p-5 text-center text-secondary">
               <i className="bx bx-math fs-1 d-block mb-2" />
-              <p className="mb-0">Введите функцию и нажмите Вычислить</p>
+              <p className="mb-0">Введите подынтегральную функцию и нажмите Вычислить</p>
             </div>
           )}
         </div>
@@ -625,10 +641,9 @@ export default function DerivativePage() {
   );
 }
 
-// ─── KaTeX block sub-component ───────────────────────────────────────────────
-
 function KatexBlock({ latex }: { latex: string }) {
   const ref = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!ref.current) return;
     try {
@@ -637,5 +652,6 @@ function KatexBlock({ latex }: { latex: string }) {
       if (ref.current) ref.current.textContent = latex;
     }
   }, [latex]);
+
   return <div ref={ref} className="overflow-auto" />;
 }
