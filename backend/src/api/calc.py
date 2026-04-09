@@ -1,12 +1,38 @@
 import math
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
-from sympy import symbols, diff, sympify, latex, lambdify, integrate, exp, sinh, cosh
+from sympy import Add, diff, exp, integrate, Integral, latex, lambdify, log, Mul, sympify, symbols
+from sympy import cos, csc, sec, sin, tan
 from sympy.integrals.manualintegrate import *
-from .schemas import EvaluateSchema, IntegralRequestSchema, IntegrationStepSchema, IntegralResponseSchema
+from .schemas import (
+    DerivativeRequestSchema,
+    DerivativeResponseSchema,
+    EvaluateSchema,
+    IntegralRequestSchema,
+    IntegralResponseSchema,
+)
 
 
 router = APIRouter(prefix="/calculate", tags=['Calculations'])
+
+
+def integral_latex(integrand, dvar):
+    """
+    LaTeX for ∫ integrand d(dvar).
+
+    Never pass raw strings through sympy.latex() — it escapes backslashes and breaks
+    fragments like \\cdot (shows as \\textbackslashcdot in KaTeX).
+    """
+    dv = latex(dvar)
+    if isinstance(integrand, str):
+        inner = integrand.strip()
+        if not inner:
+            return rf"\int \ldots \, d{dv}"
+        return rf"\int {inner} \, d{dv}"
+    if integrand is None:
+        return rf"\int \ldots \, d{dv}"
+    return latex(Integral(integrand, dvar))
+
 
 '''Все варианты действий интегратора SymPy
 ['AddRule', 'AlternativeRule', 'ArcsinRule', 'ArcsinhRule', 'ArctanRule', 'AssocLaguerreRule', 'AtomicRule', 'ChebyshevTRule', 'ChebyshevURule', 'ChiRule', 'CiRule', 'CompleteSquareRule',
@@ -21,7 +47,7 @@ def format_steps_json(step, var, start_index=1):
     current_idx = start_index
 
     raw_expr = getattr(step, 'integrand', getattr(step, 'context', step))
-    before_latex = f"\\int {latex(raw_expr)} \\, d{var}"
+    before_latex = integral_latex(raw_expr, var)
     after_math = getattr(step, 'integral', None)
 
     if isinstance(step, list):
@@ -71,21 +97,29 @@ def format_steps_json(step, var, start_index=1):
 
     elif isinstance(step, ConstantTimesRule):
         const = getattr(step, 'constant', 1)
+        sub_ig = getattr(step.substep, 'integrand', None)
+        if isinstance(sub_ig, str):
+            after_latex = f"{latex(const)} \\cdot {integral_latex(sub_ig, var)}"
+        elif sub_ig is None:
+            after_latex = f"{latex(const)} \\cdot {integral_latex('', var)}"
+        else:
+            after_latex = latex(Mul(const, Integral(sub_ig, var)))
         steps.append({
             "step_number": current_idx, "rule": "constant_times_rule",
             "description": f"Вынос константы {latex(const)}",
             "before": before_latex,
-            "after": f"{latex(const)} \\cdot \\int {latex(getattr(step.substep, 'integrand', ''))} \\, d{var}"
+            "after": after_latex,
         })
         steps.extend(format_steps_json(step.substep, var, start_index=len(steps) + start_index))
 
     elif isinstance(step, AddRule):
         substeps = getattr(step, 'substeps', [])
+        after_parts = [integral_latex(getattr(s, 'integrand', s), var) for s in substeps]
         steps.append({
             "step_number": current_idx, "rule": "sum_rule",
             "description": "Разбиение суммы",
             "before": before_latex,
-            "after": " + ".join([f"\\int {latex(getattr(s, 'integrand', s))} \\, d{var}" for s in substeps])
+            "after": " + ".join(after_parts),
         })
         for substep in substeps:
             steps.extend(format_steps_json(substep, var, start_index=len(steps) + start_index))
@@ -97,12 +131,14 @@ def format_steps_json(step, var, start_index=1):
         sub_list = getattr(step, 'substeps', [])
         actual_substep = sub_list[0] if sub_list else step
 
+        u_ig = getattr(actual_substep, 'integrand', None)
+        u_after = integral_latex("f(u)" if u_ig is None else u_ig, u_var)
         steps.append({
             "step_number": current_idx,
             "rule": "u_substitution",
             "description": f"Замена: $u = {latex(u_func)}$, тогда $du = {latex(u_func.diff(var))} dx$",
             "before": before_latex,
-            "after": f"\\int {latex(getattr(actual_substep, 'integrand', 'f(u)'))} \\, du"
+            "after": u_after,
         })
 
         # Рекурсия: ПЕРЕДАЕМ ОБЪЕКТ ИЗ СПИСКА, А НЕ ВЕСЬ СПИСОК
@@ -127,7 +163,8 @@ def format_steps_json(step, var, start_index=1):
 
         # 3. Получаем формулу под интегралом (v * du)
         # Здесь мы гарантируем, что берем атрибут у ОБЪЕКТА, а не у СПИСКА
-        v_du_expr = getattr(actual_substep, 'integrand', 'v \\cdot du')
+        v_du_expr = getattr(actual_substep, 'integrand', None)
+        rhs = integral_latex(r"v \cdot du" if v_du_expr is None else v_du_expr, var)
 
         steps.append({
             "step_number": current_idx,
@@ -135,8 +172,7 @@ def format_steps_json(step, var, start_index=1):
             "description": f"Интегрирование по частям: $u = {latex(u)}$, $dv = {latex(dv)} dx$. "
                            f"Тогда $v = {latex(v_val) if v_val is not None else 'v'}$.",
             "before": before_latex,
-            # latex(u * v_val) теперь не упадет, так как v_val — это формула, а не список
-            "after": f"{latex(u * v_val if v_val is not None else u)} - \\int {latex(v_du_expr)} \\, d{var}"
+            "after": f"{latex(u * v_val if v_val is not None else u)} - {rhs}",
         })
 
         # 4. Рекурсия (проходим по списку)
@@ -157,12 +193,13 @@ def format_steps_json(step, var, start_index=1):
 
         if substep:
             # Добавляем поясняющий шаг о переписывании
+            rw_ig = getattr(substep, 'integrand', None)
             steps.append({
                 "step_number": current_idx,
                 "rule": "rewrite_rule",
                 "description": description,
                 "before": before_latex,
-                "after": f"\\int {latex(getattr(substep, 'integrand', ''))} \\, d{var}"
+                "after": integral_latex(rw_ig, var),
             })
             # Рекурсивно идем вглубь этого правила
             steps.extend(format_steps_json(substep, var, start_index=len(steps) + start_index))
@@ -171,6 +208,141 @@ def format_steps_json(step, var, start_index=1):
         print(f"DEBUG: Пропущено правило типа {type(step)}")
 
     return steps
+
+
+def derivative_operator_latex(expr, var):
+    return f"\\frac{{d}}{{d{latex(var)}}}\\left({latex(expr)}\\right)"
+
+
+def format_derivative_steps(expr, var, start_index=1):
+    steps = []
+    current_idx = start_index
+
+    if expr.is_number:
+        return [{
+            "step_number": current_idx,
+            "rule": "constant_rule",
+            "description": "Производная константы равна нулю",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(0),
+        }]
+
+    if expr == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "power_rule",
+            "description": "Производная переменной равна единице",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(1),
+        }]
+
+    coeff, remainder = expr.as_coeff_Mul()
+    if coeff != 1 and remainder != 1 and remainder.has(var):
+        steps.append({
+            "step_number": current_idx,
+            "rule": "constant_times_rule",
+            "description": f"Выносим константу {latex(coeff)} перед знаком производной",
+            "before": derivative_operator_latex(expr, var),
+            "after": f"{latex(coeff)} \\cdot {derivative_operator_latex(remainder, var)}",
+        })
+        steps.extend(format_derivative_steps(remainder, var, current_idx + 1))
+        return steps
+
+    if isinstance(expr, Add):
+        terms = expr.as_ordered_terms()
+        steps.append({
+            "step_number": current_idx,
+            "rule": "sum_rule",
+            "description": "Производная суммы равна сумме производных",
+            "before": derivative_operator_latex(expr, var),
+            "after": " + ".join(derivative_operator_latex(term, var) for term in terms),
+        })
+        next_idx = current_idx + 1
+        for term in terms:
+            term_steps = format_derivative_steps(term, var, next_idx)
+            steps.extend(term_steps)
+            next_idx += len(term_steps)
+        return steps
+
+    if expr.is_Pow and expr.base == var and expr.exp.is_number:
+        return [{
+            "step_number": current_idx,
+            "rule": "power_rule",
+            "description": "Применяем степенное правило",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(diff(expr, var)),
+        }]
+
+    if expr.func == sin and expr.args[0] == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "trig_rule",
+            "description": "Производная sin(x) равна cos(x)",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(cos(var)),
+        }]
+
+    if expr.func == cos and expr.args[0] == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "trig_rule",
+            "description": "Производная cos(x) равна -sin(x)",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(-sin(var)),
+        }]
+
+    if expr.func == tan and expr.args[0] == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "trig_rule",
+            "description": "Производная tan(x) равна sec^2(x)",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(sec(var) ** 2),
+        }]
+
+    if expr.func == sec and expr.args[0] == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "trig_rule",
+            "description": "Производная sec(x) равна sec(x)tan(x)",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(sec(var) * tan(var)),
+        }]
+
+    if expr.func == csc and expr.args[0] == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "trig_rule",
+            "description": "Производная csc(x) равна -csc(x)cot(x)",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(diff(expr, var)),
+        }]
+
+    if expr.func == exp and expr.args[0] == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "exp_rule",
+            "description": "Производная экспоненты равна самой экспоненте",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(exp(var)),
+        }]
+
+    if expr.func == log and expr.args[0] == var:
+        return [{
+            "step_number": current_idx,
+            "rule": "log_rule",
+            "description": "Производная ln(x) равна 1/x",
+            "before": derivative_operator_latex(expr, var),
+            "after": latex(diff(expr, var)),
+        }]
+
+    return [{
+        "step_number": current_idx,
+        "rule": "special_function",
+        "description": "Для этого выражения доступен только итоговый результат производной.",
+        "before": derivative_operator_latex(expr, var),
+        "after": latex(diff(expr, var)),
+    }]
 
 @router.get("/derivative")
 async def calculate_derivative(expr: str, var: str = "x"):
@@ -187,6 +359,37 @@ async def calculate_derivative(expr: str, var: str = "x"):
         return data
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+
+
+@router.post("/derivative-steps", response_model=DerivativeResponseSchema)
+async def get_derivative_steps(data: DerivativeRequestSchema):
+    try:
+        x = symbols(data.var)
+        parsed = sympify(data.expr)
+        derivative = diff(parsed, x)
+
+        json_steps = format_derivative_steps(parsed, x)
+
+        expanded_expr = parsed.expand()
+        if expanded_expr != parsed:
+            expanded_steps = format_derivative_steps(expanded_expr, x, start_index=2)
+            if expanded_steps and expanded_steps[0]["rule"] != "special_function":
+                json_steps = [{
+                    "step_number": 1,
+                    "rule": "expand_rule",
+                    "description": "Раскрываем скобки перед дифференцированием",
+                    "before": derivative_operator_latex(parsed, x),
+                    "after": derivative_operator_latex(expanded_expr, x),
+                }, *expanded_steps]
+
+        return DerivativeResponseSchema(
+            expression=data.expr,
+            total_steps=len(json_steps),
+            steps=json_steps,
+            final_answer=latex(derivative),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Ошибка вычислений: {str(e)}")
 
 @router.get("/evaluate")
 async def evaluate_function(data: Annotated[EvaluateSchema, Depends()]):
@@ -223,6 +426,40 @@ async def evaluate_function(data: Annotated[EvaluateSchema, Depends()]):
         raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
 
 
+@router.get("/integral-evaluate")
+async def evaluate_integral_function(data: Annotated[EvaluateSchema, Depends()]):
+    try:
+        x = symbols(data.var)
+        parsed = sympify(data.expr)
+        antiderivative = integrate(parsed, x)
+
+        f = lambdify(x, parsed, modules="math")
+        integral_f = lambdify(x, antiderivative, modules="math")
+
+        points = []
+        step = (data.x_max - data.x_min) / (data.n_points - 1)
+        for i in range(data.n_points):
+            x_val = round(data.x_min + step * i, 6)
+            entry: dict = {"x": x_val, "y": None, "integral": None}
+            try:
+                y = float(f(x_val))
+                if math.isfinite(y):
+                    entry["y"] = round(min(max(y, -1e8), 1e8), 6)
+            except Exception:
+                pass
+            try:
+                integral_y = float(integral_f(x_val))
+                if math.isfinite(integral_y):
+                    entry["integral"] = round(min(max(integral_y, -1e8), 1e8), 6)
+            except Exception:
+                pass
+            points.append(entry)
+
+        return {"points": points}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+
+
 @router.post("/integrate-steps", response_model=IntegralResponseSchema)
 async def get_steps(data: IntegralRequestSchema):
     try:
@@ -250,8 +487,8 @@ async def get_steps(data: IntegralRequestSchema):
                         "step_number": 1,
                         "rule": "expand_rule",
                         "description": "Раскроем скобки для упрощения выражения",
-                        "before": f"\\int {latex(parsed)} \\, d{data.var}",
-                        "after": f"\\int {latex(expanded_expr)} \\, d{data.var}"
+                        "before": latex(Integral(parsed, x)),
+                        "after": latex(Integral(expanded_expr, x)),
                     })
                     # Пересчитываем нумерацию
                     for i, s in enumerate(json_steps):
@@ -263,7 +500,7 @@ async def get_steps(data: IntegralRequestSchema):
                 "step_number": 1,
                 "rule": "special_function",
                 "description": "Интеграл не выражается в элементарных функциях или слишком сложен для пошагового разбора.",
-                "before": f"\\int {latex(parsed)} \\, d{data.var}",
+                "before": latex(Integral(parsed, x)),
                 "after": final_latex
             })
 

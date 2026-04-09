@@ -1,22 +1,24 @@
+import { Link } from "react-router";
+
 export function Footer() {
   return (
     <footer className="py-5 bg-dark">
       <div className="container">
         <div className="row align-items-start justify-content-between mx-2 mx-sm-0">
-          <a href="#" className="col-12 col-md-3 text-decoration-none text-white fs-1 fw-semibold mb-5 mb-md-0">СПРТ</a>
+          <Link to="/" className="col-12 col-md-3 text-decoration-none text-white fs-1 fw-semibold mb-5 mb-md-0">СПРТ</Link>
 
           <ul className="col-12 col-sm-6 col-md-3 list-unstyled">
             <h5 className="fw-semibold mb-4 text-white">Инструменты</h5>
 
             <li className="mb-3">
-              <a href="" className="text-decoration-none fw-medium text-white">
+              <Link to="/calculators/integral" className="text-decoration-none fw-medium text-white">
                 Калькулятор интегралов
-              </a>
+              </Link>
             </li>
             <li className="mb-3">
-              <a href="" className="text-decoration-none fw-medium text-white">
+              <Link to="/calculators/derivative" className="text-decoration-none fw-medium text-white">
                 Калькулятор дифференциалов
-              </a>
+              </Link>
             </li>
             <li className="mb-3">
               <a href="" className="text-decoration-none fw-medium text-white">

@@ -17,6 +17,9 @@ type Pages = {
   "/me": {
     params: {};
   };
+  "/calculators/integral": {
+    params: {};
+  };
   "/calculators/derivative": {
     params: {};
   };
@@ -34,7 +37,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/me" | "/calculators/derivative" | "/login" | "/register" | "/forgot-password";
+    page: "/" | "/me" | "/calculators/integral" | "/calculators/derivative" | "/login" | "/register" | "/forgot-password";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -43,6 +46,10 @@ type RouteFiles = {
   "routes/me.tsx": {
     id: "routes/me";
     page: "/me";
+  };
+  "routes/calculators/integral.tsx": {
+    id: "routes/calculators/integral";
+    page: "/calculators/integral";
   };
   "routes/calculators/derivative.tsx": {
     id: "routes/calculators/derivative";
@@ -70,6 +77,7 @@ type RouteModules = {
   "root": typeof import("./app/root.tsx");
   "routes/home": typeof import("./app/routes/home.tsx");
   "routes/me": typeof import("./app/routes/me.tsx");
+  "routes/calculators/integral": typeof import("./app/routes/calculators/integral.tsx");
   "routes/calculators/derivative": typeof import("./app/routes/calculators/derivative.tsx");
   "routes/auth-layout": typeof import("./app/routes/auth-layout.tsx");
   "routes/login": typeof import("./app/routes/login.tsx");
