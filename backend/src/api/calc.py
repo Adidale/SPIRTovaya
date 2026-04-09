@@ -28,6 +28,12 @@ def format_steps_json(step, var, start_index=1):
         if not step: return []
         return format_steps_json(step[0], var, start_index)
 
+    elif isinstance(step, RewriteRule):
+        sub = getattr(step, 'substep', None)
+        if sub:
+            # Не просто добавляем описание, а ОБЯЗАТЕЛЬНО идем глубже
+            steps.extend(format_steps_json(sub, var, start_index=start_index))
+
     elif isinstance(step, ExpRule):
         after_math = getattr(step, 'integral', exp(var))
 
@@ -116,56 +122,46 @@ def format_steps_json(step, var, start_index=1):
         dv = step.dv
         v_step = step.v_step
 
-        # 1. Извлекаем v. Если v_step — список, берем первый элемент
-        target_v_step = v_step if not isinstance(v_step, list) else v_step[0]
-        v_val = getattr(target_v_step, 'integral', None)
+        # 1. Извлекаем v и du
+        v_val = getattr(v_step, 'integral', dv.integrate(var))
+        du_val = u.diff(var)
+        v_du_expr = (v_val * du_val).simplify()
 
-        # 2. Извлекаем substep для v*du. Это ВСЕГДА список в 1.14.0
-        sub_list = getattr(step, 'substeps', [])
-        # Берем ПЕРВЫЙ объект из списка, чтобы получить его 'integrand'
-        actual_substep = sub_list[0] if (isinstance(sub_list, list) and len(sub_list) > 0) else sub_list
-
-        # 3. Получаем формулу под интегралом (v * du)
-        # Здесь мы гарантируем, что берем атрибут у ОБЪЕКТА, а не у СПИСКА
-        v_du_expr = getattr(actual_substep, 'integrand', 'v \\cdot du')
-
+        # 2. Добавляем основной шаг "по частям"
         steps.append({
             "step_number": current_idx,
             "rule": "parts_rule",
-            "description": f"Интегрирование по частям: $u = {latex(u)}$, $dv = {latex(dv)} dx$. "
-                           f"Тогда $v = {latex(v_val) if v_val is not None else 'v'}$.",
+            "description": f"Интегрирование по частям: $u = {latex(u)}$, $dv = {latex(dv)} dx \\Rightarrow du = {latex(du_val)} dx, v = {latex(v_val)}$.",
             "before": before_latex,
-            # latex(u * v_val) теперь не упадет, так как v_val — это формула, а не список
-            "after": f"{latex(u * v_val if v_val is not None else u)} - \\int {latex(v_du_expr)} \\, d{var}"
+            "after": f"{latex(u * v_val)} - \\int {latex(v_du_expr)} \\, d{var}"
         })
 
-        # 4. Рекурсия (проходим по списку)
-        if isinstance(sub_list, list):
-            for s in sub_list:
-                steps.extend(format_steps_json(s, var, start_index=len(steps) + start_index + 1))
+        # 3. Рекурсивно ищем шаги для интеграла (v * du)
+        sub_list = getattr(step, 'substeps', [])
+        actual_substep = sub_list if (isinstance(sub_list, list) and len(sub_list) > 0) else sub_list
+
+        # Запускаем рекурсию
+        inner_steps = []
+        if actual_substep:
+            inner_steps = format_steps_json(actual_substep, var, start_index=len(steps) + start_index)
+
+        # ПРОВЕРКА: Если рекурсия не нашла шагов (как для интеграла от 1)
+        if not inner_steps:
+            steps.append({
+                "step_number": len(steps) + start_index,
+                "rule": "final_substep",
+                "description": "Вычислим оставшийся интеграл",
+                "before": f"\\int {latex(v_du_expr)} \\, d{var}",
+                "after": latex(v_du_expr.integrate(var))
+            })
+        else:
+            steps.extend(inner_steps)
 
     elif isinstance(step, AlternativeRule):
         # AlternativeRule содержит список стратегий в атрибуте alternatives.
         # Мы выбираем первую (обычно самую оптимальную) и продолжаем рекурсию.
         best_strategy = step.alternatives[0]
         return format_steps_json(best_strategy, var, start_index=current_idx)
-
-    elif isinstance(step, RewriteRule):
-        # RewriteRule содержит пояснение (description) и подшаг (substep)
-        description = getattr(step, 'description', "Упростим выражение перед интегрированием")
-        substep = getattr(step, 'substep', None)
-
-        if substep:
-            # Добавляем поясняющий шаг о переписывании
-            steps.append({
-                "step_number": current_idx,
-                "rule": "rewrite_rule",
-                "description": description,
-                "before": before_latex,
-                "after": f"\\int {latex(getattr(substep, 'integrand', ''))} \\, d{var}"
-            })
-            # Рекурсивно идем вглубь этого правила
-            steps.extend(format_steps_json(substep, var, start_index=len(steps) + start_index))
 
     else:
         print(f"DEBUG: Пропущено правило типа {type(step)}")

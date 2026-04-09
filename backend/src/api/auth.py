@@ -20,7 +20,8 @@ conf = ConnectionConfig(
     MAIL_FROM_NAME="SPRTCompany",
     MAIL_STARTTLS=False,
     MAIL_SSL_TLS=True,
-    USE_CREDENTIALS=True
+    USE_CREDENTIALS=True,
+    VALIDATE_CERTS=False #временное решение понижающее безопастность системы
 )
 
 router = APIRouter(tags=['Users'])
