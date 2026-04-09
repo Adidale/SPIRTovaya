@@ -1,5 +1,4 @@
-from typing import Self
-
+from typing import Self, List
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 class UserSchemaRegister(BaseModel):
@@ -24,3 +23,28 @@ class EvaluateSchema(BaseModel):
         if self.x_max <= self.x_min:
             raise ValueError(f"{self.var}_max must be greater than {self.var}_min")
         return self
+
+# Схема для входных данных
+class IntegralRequestSchema(BaseModel):
+    expr: str = Field(..., example="x**2 + cos(x)", description="Математическое выражение для интегрирования")
+    var: str = Field(default="x", example="x", description="Переменная интегрирования")
+
+# Схема для одного шага решения
+class IntegrationStepSchema(BaseModel):
+    step_number: int
+    rule: str
+    description: str
+    before: str  # LaTeX строка до преобразования
+    after: str   # LaTeX строка после преобразования
+
+# Схема для полного ответа API
+class IntegralResponseSchema(BaseModel):
+    expression: str
+    total_steps: int
+    steps: List[IntegrationStepSchema]
+    final_answer: str  # Ответ с добавленным + C
+
+class PasswordChangeSchema(BaseModel):
+    old_password: str
+    new_password: str
+    re_new_password: str
