@@ -190,7 +190,6 @@ async def update_username(
     await db.refresh(user)
     return {"message": "Имя пользователя обновлено", "username": user.username}
 
-
 @router.patch('/me/email')
 async def update_email(
     data: EmailUpdateSchema,
@@ -213,7 +212,17 @@ async def update_email(
 
     token = auth.create_access_token(uid=str(user.id))
     verification_url = f"http://localhost:8000/verify/{token}"
-    _emit_verification_link_dev(user.email, verification_url)
+    try:
+        message = MessageSchema(
+            subject="Подтверждение регистрации",
+            recipients=[data.email],
+            body=f"Перейдите по ссылке для активации: {verification_url}",
+            subtype=MessageType.html
+        )
+        fm = FastMail(conf)
+        await fm.send_message(message)
+    except Exception as e:
+        print(f"WARNING: Email could not be sent: {e}")
 
     return {
         "message": "Email обновлен. Подтвердите новый адрес.",
