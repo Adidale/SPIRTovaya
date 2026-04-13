@@ -36,18 +36,19 @@ _BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 _DEV_VERIFICATION_LOG = _BACKEND_DIR / "dev_verification_links.txt"
 
 
-def _emit_verification_link_dev(email: str, verification_url: str) -> None:
-    """Print verification URL to server console and append to dev_verification_links.txt (gitignored)."""
-    line = f"{datetime.now(timezone.utc).isoformat()} | {email} | {verification_url}\n"
-    print(f"\n[DEV] Verification link for {email}:\n{verification_url}\n", flush=True)
-    try:
-        with _DEV_VERIFICATION_LOG.open("a", encoding="utf-8") as f:
-            f.write(line)
-    except OSError as exc:
-        print(f"[DEV] Could not write {_DEV_VERIFICATION_LOG}: {exc}", flush=True)
+# def _emit_verification_link_dev(email: str, verification_url: str) -> None:
+#     """Print verification URL to server console and append to dev_verification_links.txt (gitignored)."""
+#     line = f"{datetime.now(timezone.utc).isoformat()} | {email} | {verification_url}\n"
+#     print(f"\n[DEV] Verification link for {email}:\n{verification_url}\n", flush=True)
+#     try:
+#         with _DEV_VERIFICATION_LOG.open("a", encoding="utf-8") as f:
+#             f.write(line)
+#     except OSError as exc:
+#         print(f"[DEV] Could not write {_DEV_VERIFICATION_LOG}: {exc}", flush=True)
 
 @router.post('/register')
-async def register(data:UserSchemaRegister, db: AsyncSession = Depends(get_db)):
+async def register(data:UserSchemaRegister,
+                   db: AsyncSession = Depends(get_db)):
     # 1. Сначала проверяем, есть ли уже такой email
     result = await db.execute(select(User).filter(User.email == data.email))
     existing_user = result.scalars().first()
@@ -86,9 +87,9 @@ async def register(data:UserSchemaRegister, db: AsyncSession = Depends(get_db)):
     else:
         raise HTTPException(status_code=400, detail='incorrect password or password does not match')
 
-
 @router.get('/verify/{token}')
-async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
+async def verify_email(token: str,
+                       db: AsyncSession = Depends(get_db)):
     try:
         # Раскодируем токен и получаем uid
         payload = auth._decode_token(token)
@@ -116,7 +117,9 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(e))  # И выведет ошибку в браузере
 
 @router.post('/login')
-async def login(data: UserSchemaLogin, response: Response, db: AsyncSession = Depends(get_db)):
+async def login(data: UserSchemaLogin,
+                response: Response,
+                db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).filter(User.email == data.email))
     user = result.scalars().first()
 
@@ -190,7 +193,6 @@ async def update_username(
     await db.refresh(user)
     return {"message": "Имя пользователя обновлено", "username": user.username}
 
-
 @router.patch('/me/email')
 async def update_email(
     data: EmailUpdateSchema,
@@ -213,7 +215,17 @@ async def update_email(
 
     token = auth.create_access_token(uid=str(user.id))
     verification_url = f"http://localhost:8000/verify/{token}"
-    _emit_verification_link_dev(user.email, verification_url)
+    try:
+        message = MessageSchema(
+            subject="Подтверждение регистрации",
+            recipients=[data.email],
+            body=f"Перейдите по ссылке для активации: {verification_url}",
+            subtype=MessageType.html
+        )
+        fm = FastMail(conf)
+        await fm.send_message(message)
+    except Exception as e:
+        print(f"WARNING: Email could not be sent: {e}")
 
     return {
         "message": "Email обновлен. Подтвердите новый адрес.",
