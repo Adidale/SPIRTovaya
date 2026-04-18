@@ -15,110 +15,278 @@ router = APIRouter(prefix="/calculate", tags=['Calculations'])
 'OrthogonalPolyRule', 'PartsRule', 'PiecewiseRule', 'PolylogRule', 'PowerRule', 'ReciprocalRule', 'ReciprocalSqrtQuadraticRule', 'RewriteRule', 'Rule', 'Sec2Rule', 'SecTanRule', 'ShiRule', 'SiRule', 'SinRule',
 'SinhRule', 'SqrtQuadraticDenomRule', 'SqrtQuadraticRule', 'TrigRule', 'TrigSubstitutionRule', 'URule', 'UpperGammaRule']'''
 
-
-def format_derivative_steps(expr, var, step_num=1):
+def format_steps_json(step, var, start_index=1):
     steps = []
+    current_idx = start_index
 
-    # --- 1. ПРАВИЛО ЧАСТНОГО (ДРОБИ) ---
-    # Проверяем, является ли выражение дробью
-    if expr.is_Pow and expr.exp.is_negative:
-        # Для выражений типа 1/x или u/v
-        u = sympify(1)  # числитель (условно)
-        v = expr.base ** (-expr.exp)  # знаменатель
+    raw_expr = getattr(step, 'integrand', getattr(step, 'context', step))
+    before_latex = f"\\int {latex(raw_expr)} \\, d{var}"
+    after_math = getattr(step, 'integral', None)
+
+    if isinstance(step, list):
+        if not step: return []
+        return format_steps_json(step[0], var, start_index)
+
+    elif isinstance(step, RewriteRule):
+        sub = getattr(step, 'substep', None)
+        if sub:
+            # Не просто добавляем описание, а ОБЯЗАТЕЛЬНО идем глубже
+            steps.extend(format_steps_json(sub, var, start_index=start_index))
+
+    elif isinstance(step, ExpRule):
+        after_math = getattr(step, 'integral', exp(var))
 
         steps.append({
-            "step_number": step_num,
-            "rule": "quotient_rule",
-            "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$.",
-            "before": f"\\frac{{d}}{{d{latex(var)}}} (\\frac{{{latex(u)}}}{{{latex(v)}}})",
-            "after": f"\\frac{{{latex(diff(u, var))} \\cdot {latex(v)} - {latex(u)} \\cdot {latex(diff(v, var))}}}{{{latex(v ** 2)}}}"
+            "step_number": current_idx,
+            "rule": "exp_rule",
+            "description": "Интеграл от экспоненты равен самой экспоненте",
+            "before": before_latex,
+            "after": latex(after_math)
         })
-        # Рекурсия для числителя и знаменателя, если они сложные
-        steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
 
-    # --- 2. ПРАВИЛО СТЕПЕНИ (x^n) ---
-    elif isinstance(expr, Pow):
-        base = expr.base
-        exp = expr.exp
+    elif isinstance(step, (SinRule, CosRule)):
+        after_math = getattr(step, 'integral', None)
+        if after_math is None:
+            from sympy import sin, cos
+            after_math = -cos(var) if isinstance(step, SinRule) else sin(var)
 
-        # Если основание — это переменная x, а степень — число
-        if base == var and exp.is_number:
-            res = exp * base ** (exp - 1)
+        steps.append({
+            "step_number": current_idx,
+            "rule": "trig_rule",
+            "description": "Интегрирование тригонометрической функции",
+            "before": before_latex,
+            "after": latex(after_math)
+        })
+
+    elif isinstance(step, PowerRule):
+        if after_math is None: after_math = (step.base ** (step.exp + 1)) / (step.exp + 1)
+        steps.append({
+            "step_number": current_idx, "rule": "power_rule",
+            "description": "Правило степени",
+            "before": before_latex, "after": latex(after_math)
+        })
+
+    elif isinstance(step, ConstantRule):
+        const = getattr(step, 'constant', 1)
+        steps.append({
+            "step_number": current_idx, "rule": "constant_rule",
+            "description": "Интеграл константы",
+            "before": before_latex, "after": latex(const * var)
+        })
+
+    elif isinstance(step, ConstantTimesRule):
+        const = getattr(step, 'constant', 1)
+        steps.append({
+            "step_number": current_idx, "rule": "constant_times_rule",
+            "description": f"Вынос константы {latex(const)}",
+            "before": before_latex,
+            "after": f"{latex(const)} \\cdot \\int {latex(getattr(step.substep, 'integrand', ''))} \\, d{var}"
+        })
+        steps.extend(format_steps_json(step.substep, var, start_index=len(steps) + start_index))
+
+    elif isinstance(step, AddRule):
+        substeps = getattr(step, 'substeps', [])
+        steps.append({
+            "step_number": current_idx, "rule": "sum_rule",
+            "description": "Разбиение суммы",
+            "before": before_latex,
+            "after": " + ".join([f"\\int {latex(getattr(s, 'integrand', s))} \\, d{var}" for s in substeps])
+        })
+        for substep in substeps:
+            steps.extend(format_steps_json(substep, var, start_index=len(steps) + start_index))
+
+    elif isinstance(step, URule):
+        u_var = step.u_var
+        u_func = step.u_func
+        sub_step = getattr(step, 'substep', None)
+
+        # Получаем чистый интеграл от u (без иксов)
+        u_integrand = getattr(sub_step, 'integrand', 'f(u)')
+
+        # Очищаем описание от технических скобок \left \right
+        description = (f"Введем замену переменной: пусть ${latex(u_var)} = {latex(u_func)}$. "
+                       f"Тогда $d{latex(u_var)} = {latex(u_func.diff(var))} \, d{var}$")
+        description = description.replace('\\left(', '(').replace('\\right)', ')')
+
+        res_u = manualintegrate(step.substep, u_var)
+
+        steps.append({
+            "step_number": len(steps) + start_index,
+            "rule": "u_substitution_revert",
+            "description": f"Выполним обратную замену: подставим ${latex(u_func)}$ вместо ${latex(u_var)}$",
+            "before": latex(res_u),  # Теперь здесь будет результат через u
+            "after": latex(after_math)  # А здесь уже финальный результат через x
+        })
+
+        # Рекурсивно добавляем шаги для интеграла по u
+        if sub_step:
+            steps.extend(format_steps_json(sub_step, u_var, start_index=len(steps) + start_index + 1))
+
+        # Добавляем шаг обратной замены, чтобы юзер видел переход u -> x
+        steps.append({
+            "step_number": len(steps) + start_index + 1,
+            "rule": "u_substitution_revert",
+            "description": f"Выполним обратную замену: подставим ${latex(u_func)}$ вместо ${latex(u_var)}$",
+            "before": f"{latex(getattr(sub_step, 'integral', ''))}",
+            "after": latex(after_math) if after_math else "..."
+        })
+
+        # --- ИСПРАВЛЕННЫЙ PartsRule ---
+
+    elif isinstance(step, PartsRule):
+        u = step.u
+        dv = step.dv
+        v_step = step.v_step
+
+        # 1. Извлекаем v и du
+        v_val = getattr(v_step, 'integral', dv.integrate(var))
+        du_val = u.diff(var)
+        v_du_expr = (v_val * du_val).simplify()
+
+        # 2. Добавляем основной шаг "по частям"
+        steps.append({
+            "step_number": current_idx,
+            "rule": "parts_rule",
+            "description": f"Интегрирование по частям: $u = {latex(u)}$, $dv = {latex(dv)} dx \\Rightarrow du = {latex(du_val)} dx, v = {latex(v_val)}$.",
+            "before": before_latex,
+            "after": f"{latex(u * v_val)} - \\int {latex(v_du_expr)} \\, d{var}"
+        })
+
+        # 3. Рекурсивно ищем шаги для интеграла (v * du)
+        sub_list = getattr(step, 'substeps', [])
+        actual_substep = sub_list if (isinstance(sub_list, list) and len(sub_list) > 0) else sub_list
+
+        # Запускаем рекурсию
+        inner_steps = []
+        if actual_substep:
+            inner_steps = format_steps_json(actual_substep, var, start_index=len(steps) + start_index)
+
+        # ПРОВЕРКА: Если рекурсия не нашла шагов (как для интеграла от 1)
+        if not inner_steps:
             steps.append({
-                "step_number": step_num,
-                "rule": "power_rule",
-                "description": f"Применим правило степени: $(x^n)' = n \\cdot x^{{n-1}}$.",
-                "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-                "after": latex(res)
+                "step_number": len(steps) + start_index,
+                "rule": "final_substep",
+                "description": "Вычислим оставшийся интеграл",
+                "before": f"\\int {latex(v_du_expr)} \\, d{var}",
+                "after": latex(v_du_expr.integrate(var))
             })
         else:
-            # Если это сложная функция типа (sin(x))^2, сработает Chain Rule
-            # которое мы писали ранее
-            pass
+            steps.extend(inner_steps)
 
-    # 1. Правило суммы: (f + g)'
-    elif expr.is_Add:
-        after_parts = [f"\\frac{{d}}{{d{latex(var)}}} ({latex(arg)})" for arg in expr.args]
-        steps.append({
-            "step_number": step_num,
-            "rule": "sum_rule",
-            "description": "Производная суммы равна сумме производных",
-            "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-            "after": " + ".join(after_parts)
-        })
-        for arg in expr.args:
-            steps.extend(format_derivative_steps(arg, var, len(steps) + step_num))
+    elif isinstance(step, AlternativeRule):
+        # AlternativeRule содержит список стратегий в атрибуте alternatives.
+        # Мы выбираем первую (обычно самую оптимальную) и продолжаем рекурсию.
+        best_strategy = step.alternatives[0]
+        return format_steps_json(best_strategy, var, start_index=current_idx)
 
-    # 2. Правило произведения: (u * v)'
-    elif expr.is_Mul:
-        # Ищем знаменатель (степень -1)
-        denom_part = [arg for arg in expr.args if arg.is_Pow and arg.exp.is_negative]
-        if denom_part:
-            v = denom_part[0].base ** (-denom_part[0].exp)
-            u = expr / denom_part[0]
-
-            res_val = (diff(u, var) * v - u * diff(v, var)) / (v ** 2)
-            steps.append({
-                "step_number": step_num,
-                "rule": "quotient_rule",
-                "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$",
-                "before": f"\\frac{{d}}{{d{latex(var)}}} \\left( \\frac{{{latex(u)}}}{{{latex(v)}}} \\right)",
-                "after": latex(res_val)
-            })
-            # Рекурсивно идем в числитель и знаменатель
-            steps.extend(format_derivative_steps(u, var, len(steps) + step_num))
-            steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
-            return steps
-
-    # 3. СЛОЖНАЯ ФУНКЦИЯ (Chain Rule): f(g(x))
-    elif len(expr.args) == 1 and not expr.is_Symbol:
-        inner = expr.args[0]  # Внутренняя функция g(x)
-        if inner != var:
-            # Создаем временную переменную 'u' для наглядности
-            u = symbols('u')
-            outer_f = expr.func(u)
-            steps.append({
-                "step_number": step_num,
-                "rule": "chain_rule",
-                "description": f"Сложная функция: внешняя ${latex(outer_f)}$, внутренняя $u = {latex(inner)}$.",
-                "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-                "after": f"\\frac{{d}}{{du}} ({latex(outer_f)}) \\cdot \\frac{{d}}{{d{latex(var)}}} ({latex(inner)})"
-            })
-            # Добавляем шаги для внутренней части
-            steps.extend(format_derivative_steps(inner, var, len(steps) + step_num))
-
-    # 4. Базовое правило (степень, sin, cos и т.д.)
     else:
-        res = diff(expr, var)
-        steps.append({
-            "step_number": step_num,
-            "rule": "base_rule",
-            "description": f"Используем таблицу производных для ${latex(expr)}$.",
-            "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-            "after": latex(res)
-        })
+        print(f"DEBUG: Пропущено правило типа {type(step)}")
 
     return steps
+
+# def format_derivative_steps(expr, var, step_num=1):
+#     steps = []
+#
+#     # --- 1. ПРАВИЛО ЧАСТНОГО (ДРОБИ) ---
+#     # Проверяем, является ли выражение дробью
+#     if expr.is_Pow and expr.exp.is_negative:
+#         # Для выражений типа 1/x или u/v
+#         u = sympify(1)  # числитель (условно)
+#         v = expr.base ** (-expr.exp)  # знаменатель
+#
+#         steps.append({
+#             "step_number": step_num,
+#             "rule": "quotient_rule",
+#             "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$.",
+#             "before": f"\\frac{{d}}{{d{latex(var)}}} (\\frac{{{latex(u)}}}{{{latex(v)}}})",
+#             "after": f"\\frac{{{latex(diff(u, var))} \\cdot {latex(v)} - {latex(u)} \\cdot {latex(diff(v, var))}}}{{{latex(v ** 2)}}}"
+#         })
+#         # Рекурсия для числителя и знаменателя, если они сложные
+#         steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
+#
+#     # --- 2. ПРАВИЛО СТЕПЕНИ (x^n) ---
+#     elif isinstance(expr, Pow):
+#         base = expr.base
+#         exp = expr.exp
+#
+#         # Если основание — это переменная x, а степень — число
+#         if base == var and exp.is_number:
+#             res = exp * base ** (exp - 1)
+#             steps.append({
+#                 "step_number": step_num,
+#                 "rule": "power_rule",
+#                 "description": f"Применим правило степени: $(x^n)' = n \\cdot x^{{n-1}}$.",
+#                 "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#                 "after": latex(res)
+#             })
+#         else:
+#             # Если это сложная функция типа (sin(x))^2, сработает Chain Rule
+#             # которое мы писали ранее
+#             pass
+#
+#     # 1. Правило суммы: (f + g)'
+#     elif expr.is_Add:
+#         after_parts = [f"\\frac{{d}}{{d{latex(var)}}} ({latex(arg)})" for arg in expr.args]
+#         steps.append({
+#             "step_number": step_num,
+#             "rule": "sum_rule",
+#             "description": "Производная суммы равна сумме производных",
+#             "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#             "after": " + ".join(after_parts)
+#         })
+#         for arg in expr.args:
+#             steps.extend(format_derivative_steps(arg, var, len(steps) + step_num))
+#
+#     # 2. Правило произведения: (u * v)'
+#     elif expr.is_Mul:
+#         # Ищем знаменатель (степень -1)
+#         denom_part = [arg for arg in expr.args if arg.is_Pow and arg.exp.is_negative]
+#         if denom_part:
+#             v = denom_part[0].base ** (-denom_part[0].exp)
+#             u = expr / denom_part[0]
+#
+#             res_val = (diff(u, var) * v - u * diff(v, var)) / (v ** 2)
+#             steps.append({
+#                 "step_number": step_num,
+#                 "rule": "quotient_rule",
+#                 "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$",
+#                 "before": f"\\frac{{d}}{{d{latex(var)}}} \\left( \\frac{{{latex(u)}}}{{{latex(v)}}} \\right)",
+#                 "after": latex(res_val)
+#             })
+#             # Рекурсивно идем в числитель и знаменатель
+#             steps.extend(format_derivative_steps(u, var, len(steps) + step_num))
+#             steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
+#             return steps
+#
+#     # 3. СЛОЖНАЯ ФУНКЦИЯ (Chain Rule): f(g(x))
+#     elif len(expr.args) == 1 and not expr.is_Symbol:
+#         inner = expr.args[0]  # Внутренняя функция g(x)
+#         if inner != var:
+#             # Создаем временную переменную 'u' для наглядности
+#             u = symbols('u')
+#             outer_f = expr.func(u)
+#             steps.append({
+#                 "step_number": step_num,
+#                 "rule": "chain_rule",
+#                 "description": f"Сложная функция: внешняя ${latex(outer_f)}$, внутренняя $u = {latex(inner)}$.",
+#                 "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#                 "after": f"\\frac{{d}}{{du}} ({latex(outer_f)}) \\cdot \\frac{{d}}{{d{latex(var)}}} ({latex(inner)})"
+#             })
+#             # Добавляем шаги для внутренней части
+#             steps.extend(format_derivative_steps(inner, var, len(steps) + step_num))
+#
+#     # 4. Базовое правило (степень, sin, cos и т.д.)
+#     else:
+#         res = diff(expr, var)
+#         steps.append({
+#             "step_number": step_num,
+#             "rule": "base_rule",
+#             "description": f"Используем таблицу производных для ${latex(expr)}$.",
+#             "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#             "after": latex(res)
+#         })
+#
+#     return steps
 
 def format_derivative_steps(expr, var, step_num=1):
     steps = []
@@ -337,14 +505,14 @@ async def get_steps(data: IntegralRequestSchema):
 
         # 2. Пытаемся получить шаги для исходного выражения
         steps_tree = integral_steps(parsed, x)
-        json_steps = format_integrate_steps(steps_tree, x)
+        json_steps = format_steps_json(steps_tree, x)
 
         # 3. Если шагов нет, пробуем раскрыть скобки (для примеров типа (x-1)^2)
         if not json_steps:
             expanded_expr = parsed.expand()
             if expanded_expr != parsed:
                 steps_tree = integral_steps(expanded_expr, x)
-                json_steps = format_integrate_steps(steps_tree, x)
+                json_steps = format_steps_json(steps_tree, x)
 
                 if json_steps:
                     # Добавляем поясняющий шаг в начало
