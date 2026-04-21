@@ -68,3 +68,11 @@ class PasswordChangeSchema(BaseModel):
     old_password: str
     new_password: str
     re_new_password: str
+
+class OrbitalTransfersSchema(BaseModel):
+    eccentricity_1:float = Field(description='Начальное наклонение орбиты')
+    eccentricity_2: float = Field(description='Наклонение целевой орбиты')
+    h1:float = Field(description='Начальная высота орбиты',)
+    h2:float = Field(description='Высота целевой орбиты')
+    force:float = Field(description='Сила тагя двигательной установки', default=1)
+    impulse:float = Field(description='Удельный импульс двигателя в вакууме', default=1)

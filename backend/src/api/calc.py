@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sympy import symbols, diff, sympify, latex, lambdify, integrate, exp, sinh, cosh
 from sympy.integrals.manualintegrate import *
-from .schemas import EvaluateSchema, IntegralRequestSchema, IntegrationStepSchema, IntegralResponseSchema
+from .schemas import EvaluateSchema, IntegralRequestSchema, IntegralResponseSchema, OrbitalTransfersSchema
 
 
 router = APIRouter(prefix="/calculate", tags=['Calculations'])
@@ -546,3 +546,71 @@ async def get_steps(data: IntegralRequestSchema):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка вычислений: {str(e)}")
+
+@router.post('/orbital-transfers')
+async def orbital_transfers(data: OrbitalTransfersSchema):
+    # данные первой орбиты
+    i1 = data.eccentricity_1  # наконение (градусы)
+    h1 = data.h1  # высота (км)
+
+    # данные второй орбиты
+    i2 = data.eccentricity_2  # наконение (градусы)
+    h2 = data.h2  # высота (км)
+
+    # константы и другие данные
+    ik = 83  # наклонение космодрома (градусы)
+    G = 6.67 * 10 ** (-11)  # (м**3 / кг * с**2)
+    Mz = 5.9722 * 10 ** 24  # (кг)
+    mz = G * Mz / 1000 ** 3  # земная гравитационная константа (км**3 / с**2)
+    Rz = 6371  # радиус земли (км)
+    Mrb = 6475  # масса разгонного блока (кг)
+    Ma = 280  # масса аппарата (кг)
+    Mk = Mrb + Ma  # масса конструкции (кг)
+    di = math.radians(abs(i2 - i1))  # изменение угла в радианах(питон считает в радианах)
+    Iyd = data.impulse  # удельный импульс двигателя в вакууме (км/c)
+    Pdy = data.force  # сила тяги двигатьной установки (кг·км/с**2)
+
+    Vnoo = math.sqrt(mz * (1 / (Rz + h1)))  # круговая скорость на низкой околоемной орбите
+    Vc = math.sqrt(mz * (1 / (Rz + h2)))  # круговая скорость на целевой орбите
+    a = (2 * Rz + h1 + h2) / 2
+    Vp = math.sqrt(mz * ((2 / (Rz + h1)) - (1 / a)))  # скорость в перегее
+    Va = math.sqrt(mz * ((2 / (Rz + h2)) - (1 / a)))  # скорость в апогее
+    dV1 = Vp - Vnoo  # изменение скорости 1
+    dV2 = 2 * Va * math.sin(di / 2)  # изменение скорости 2
+    dV3 = Vc - Va  # изменение скорости 3
+    dV = dV1 + dV2 + dV3  # суммарное изменение скорости
+
+    Mt = Mk * (math.e ** (dV / Iyd) - 1)  # масса топлива
+    Mrst = Pdy / Iyd  # расход топлива
+    t = Mt / Mrst  # время работы двигателя
+
+    Mt1 = (Mk + Mt) * (1 - math.e ** (-dV1 / Iyd))  # масса топлива за 1 включение
+    Mt2 = (Mk + Mt - Mt1) * (1 - math.e ** (-dV2 / Iyd))  # масса топлива за 2 включение
+    Mt3 = (Mk + Mt - Mt1 - Mt2) * (1 - math.e ** (-dV3 / Iyd))  # масса топлива за 3 включение
+
+    t1 = Mt1 / Mrst  # время включения двигателя для 1 импульса
+    t2 = Mt2 / Mrst  # время включения двигателя для 2 импульса
+    t3 = Mt3 / Mrst  # время включения двигателя для 3 импульса
+
+    return {
+        "start_data": {
+            'i1':i1,
+            'h1':h1,
+            'i2':i2,
+            'h2':h2,
+            'force': Pdy,
+            'impulse':Iyd
+        },
+        "answer": {
+            'Mrst':Mrst,
+            'dV1':dV1,
+            'dV2':dV2,
+            'dV3':dV3,
+            'Mt1':Mt1,
+            'Mt2':Mt2,
+            'Mt3':Mt3,
+            't1':t1,
+            't2':t2,
+            't3':t3
+        }
+    }
