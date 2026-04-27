@@ -23,6 +23,9 @@ type Pages = {
   "/calculators/derivative": {
     params: {};
   };
+  "/space/orbits": {
+    params: {};
+  };
   "/login": {
     params: {};
   };
@@ -37,7 +40,7 @@ type Pages = {
 type RouteFiles = {
   "root.tsx": {
     id: "root";
-    page: "/" | "/me" | "/calculators/integral" | "/calculators/derivative" | "/login" | "/register" | "/forgot-password";
+    page: "/" | "/me" | "/calculators/integral" | "/calculators/derivative" | "/space/orbits" | "/login" | "/register" | "/forgot-password";
   };
   "routes/home.tsx": {
     id: "routes/home";
@@ -54,6 +57,10 @@ type RouteFiles = {
   "routes/calculators/derivative.tsx": {
     id: "routes/calculators/derivative";
     page: "/calculators/derivative";
+  };
+  "routes/space/orbits.tsx": {
+    id: "routes/space/orbits";
+    page: "/space/orbits";
   };
   "routes/auth-layout.tsx": {
     id: "routes/auth-layout";
@@ -79,6 +86,7 @@ type RouteModules = {
   "routes/me": typeof import("./app/routes/me.tsx");
   "routes/calculators/integral": typeof import("./app/routes/calculators/integral.tsx");
   "routes/calculators/derivative": typeof import("./app/routes/calculators/derivative.tsx");
+  "routes/space/orbits": typeof import("./app/routes/space/orbits.tsx");
   "routes/auth-layout": typeof import("./app/routes/auth-layout.tsx");
   "routes/login": typeof import("./app/routes/login.tsx");
   "routes/register": typeof import("./app/routes/register.tsx");

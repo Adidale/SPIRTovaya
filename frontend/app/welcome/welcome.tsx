@@ -160,7 +160,7 @@ export function Welcome() {
 
           <ul className="list-unstyled col-12 col-md-5 m-0">
             <li className="mb-3">
-              <a href="" className="text-decoration-none fs-5 fw-medium text-dark d-flex justify-content-start align-items-center">
+              <a href="/space/orbits" className="text-decoration-none fs-5 fw-medium text-dark d-flex justify-content-start align-items-center">
                 <i className="bi bi-check-circle-fill me-2 fs-3 text-success"></i>
                 Импульс перехода между орбитами
               </a>
