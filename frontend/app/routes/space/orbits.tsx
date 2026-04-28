@@ -108,7 +108,7 @@ export const meta: MetaFunction = () => {
 
 export default function OrbitsPage() {
   const [orbits, setOrbits] = useState<OrbitInput[]>(INITIAL_ORBITS);
-  const [transitionEngines, setTransitionEngines] = useState<EngineInput[]>([INITIAL_ENGINE]);
+  const [engine, setEngine] = useState<EngineInput>(INITIAL_ENGINE);
   const [results, setResults] = useState<TransitionResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -276,30 +276,18 @@ export default function OrbitsPage() {
       );
     };
 
-  const handleTransitionEngineChange =
-    (index: number, field: keyof EngineInput) => (event: ChangeEvent<HTMLInputElement>) => {
-      setTransitionEngines((prev) =>
-        prev.map((item, currentIndex) =>
-          currentIndex === index ? { ...item, [field]: event.target.value } : item,
-        ),
-      );
+  const handleEngineInputChange =
+    (field: keyof EngineInput) => (event: ChangeEvent<HTMLInputElement>) => {
+      setEngine((prev) => ({ ...prev, [field]: event.target.value }));
     };
 
   const handleAddOrbit = () => {
     setOrbits((prev) => [...prev, { eccentricity: "", h: "" }]);
-    setTransitionEngines((prev) => {
-      const base = prev[prev.length - 1] ?? INITIAL_ENGINE;
-      return [...prev, { force: base.force, impulse: base.impulse }];
-    });
   };
 
   const handleRemoveLastOrbit = () => {
     setOrbits((prev) => {
       if (prev.length <= 2) return prev;
-      return prev.slice(0, -1);
-    });
-    setTransitionEngines((prev) => {
-      if (prev.length <= 1) return prev;
       return prev.slice(0, -1);
     });
     setResults([]);
@@ -308,7 +296,7 @@ export default function OrbitsPage() {
 
   const handleClear = () => {
     setOrbits(INITIAL_ORBITS);
-    setTransitionEngines([INITIAL_ENGINE]);
+    setEngine(INITIAL_ENGINE);
     setResults([]);
     setError(null);
   };
@@ -327,10 +315,10 @@ export default function OrbitsPage() {
       const collected: TransitionResult[] = [];
 
       for (let i = 0; i < orbits.length - 1; i++) {
-        const payload = toRequestPayload(orbits[i], orbits[i + 1], transitionEngines[i] ?? INITIAL_ENGINE);
+        const payload = toRequestPayload(orbits[i], orbits[i + 1], engine);
         if (!payload) {
           throw new Error(
-            `Проверьте значения для орбит ${i + 1} и ${i + 2} и параметров этапа: все поля должны быть числами.`,
+            `Проверьте значения для орбит ${i + 1} и ${i + 2}, а также параметры двигателя.`,
           );
         }
 
@@ -430,37 +418,35 @@ export default function OrbitsPage() {
                       />
                     </div>
                   </div>
-                  {index > 0 && (
-                    <div className="row g-2 mt-2">
-                      <div className="col-12 small text-secondary">
-                        Параметры этапа перехода {index} → {index + 1}
-                      </div>
-                      <div className="col-12 col-md-6">
-                        <label className="form-label small text-secondary mb-1">Тяга, кг·км/с²</label>
-                        <input
-                          type="number"
-                          step="any"
-                          className="form-control"
-                          value={transitionEngines[index - 1]?.force ?? ""}
-                          onChange={handleTransitionEngineChange(index - 1, "force")}
-                          placeholder="Напр. 1"
-                        />
-                      </div>
-                      <div className="col-12 col-md-6">
-                        <label className="form-label small text-secondary mb-1">Удельный импульс, км/с</label>
-                        <input
-                          type="number"
-                          step="any"
-                          className="form-control"
-                          value={transitionEngines[index - 1]?.impulse ?? ""}
-                          onChange={handleTransitionEngineChange(index - 1, "impulse")}
-                          placeholder="Напр. 1"
-                        />
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
+            </div>
+
+            <hr className="my-3" />
+            <p className="text-secondary small fw-medium mb-2">Параметры двигателя (общие для всех переходов)</p>
+            <div className="row g-2">
+              <div className="col-12 col-md-6">
+                <label className="form-label small text-secondary mb-1">Тяга, кг·км/с²</label>
+                <input
+                  type="number"
+                  step="any"
+                  className="form-control"
+                  value={engine.force}
+                  onChange={handleEngineInputChange("force")}
+                  placeholder="Напр. 1"
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label small text-secondary mb-1">Удельный импульс, км/с</label>
+                <input
+                  type="number"
+                  step="any"
+                  className="form-control"
+                  value={engine.impulse}
+                  onChange={handleEngineInputChange("impulse")}
+                  placeholder="Напр. 1"
+                />
+              </div>
             </div>
 
             <div className="d-flex gap-2 mt-3 flex-wrap">
@@ -518,18 +504,8 @@ export default function OrbitsPage() {
                   <div className="fw-semibold">Орбита {hoveredOrbit.index + 1}</div>
                   <div>Высота: {orbits[hoveredOrbit.index]?.h || "—"} км</div>
                   <div>Угол к экватору: {orbits[hoveredOrbit.index]?.eccentricity || "—"}°</div>
-                  <div>
-                    Входящий этап (тяга/импульс):{" "}
-                    {hoveredOrbit.index > 0
-                      ? `${transitionEngines[hoveredOrbit.index - 1]?.force || "—"} / ${transitionEngines[hoveredOrbit.index - 1]?.impulse || "—"}`
-                      : "—"}
-                  </div>
-                  <div>
-                    Исходящий этап (тяга/импульс):{" "}
-                    {hoveredOrbit.index < transitionEngines.length
-                      ? `${transitionEngines[hoveredOrbit.index]?.force || "—"} / ${transitionEngines[hoveredOrbit.index]?.impulse || "—"}`
-                      : "—"}
-                  </div>
+                  <div>Тяга: {engine.force || "—"}</div>
+                  <div>Импульс: {engine.impulse || "—"}</div>
                 </div>
               )}
             </div>
