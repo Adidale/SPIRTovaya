@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from sympy import symbols, diff, sympify, latex, lambdify, integrate, exp, sinh, cosh
 from sympy.integrals.manualintegrate import *
-from .schemas import EvaluateSchema, IntegralRequestSchema, IntegralResponseSchema, OrbitalTransfersSchema
+from .schemas import EvaluateIntegralSchema, EvaluateDerivativeSchema, IntegralRequestSchema, IntegralResponseSchema, OrbitalTransfersSchema
 
 
 router = APIRouter(prefix="/calculate", tags=['Calculations'])
@@ -184,110 +184,6 @@ def format_steps_json(step, var, start_index=1):
 
     return steps
 
-# def format_derivative_steps(expr, var, step_num=1):
-#     steps = []
-#
-#     # --- 1. ПРАВИЛО ЧАСТНОГО (ДРОБИ) ---
-#     # Проверяем, является ли выражение дробью
-#     if expr.is_Pow and expr.exp.is_negative:
-#         # Для выражений типа 1/x или u/v
-#         u = sympify(1)  # числитель (условно)
-#         v = expr.base ** (-expr.exp)  # знаменатель
-#
-#         steps.append({
-#             "step_number": step_num,
-#             "rule": "quotient_rule",
-#             "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$.",
-#             "before": f"\\frac{{d}}{{d{latex(var)}}} (\\frac{{{latex(u)}}}{{{latex(v)}}})",
-#             "after": f"\\frac{{{latex(diff(u, var))} \\cdot {latex(v)} - {latex(u)} \\cdot {latex(diff(v, var))}}}{{{latex(v ** 2)}}}"
-#         })
-#         # Рекурсия для числителя и знаменателя, если они сложные
-#         steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
-#
-#     # --- 2. ПРАВИЛО СТЕПЕНИ (x^n) ---
-#     elif isinstance(expr, Pow):
-#         base = expr.base
-#         exp = expr.exp
-#
-#         # Если основание — это переменная x, а степень — число
-#         if base == var and exp.is_number:
-#             res = exp * base ** (exp - 1)
-#             steps.append({
-#                 "step_number": step_num,
-#                 "rule": "power_rule",
-#                 "description": f"Применим правило степени: $(x^n)' = n \\cdot x^{{n-1}}$.",
-#                 "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-#                 "after": latex(res)
-#             })
-#         else:
-#             # Если это сложная функция типа (sin(x))^2, сработает Chain Rule
-#             # которое мы писали ранее
-#             pass
-#
-#     # 1. Правило суммы: (f + g)'
-#     elif expr.is_Add:
-#         after_parts = [f"\\frac{{d}}{{d{latex(var)}}} ({latex(arg)})" for arg in expr.args]
-#         steps.append({
-#             "step_number": step_num,
-#             "rule": "sum_rule",
-#             "description": "Производная суммы равна сумме производных",
-#             "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-#             "after": " + ".join(after_parts)
-#         })
-#         for arg in expr.args:
-#             steps.extend(format_derivative_steps(arg, var, len(steps) + step_num))
-#
-#     # 2. Правило произведения: (u * v)'
-#     elif expr.is_Mul:
-#         # Ищем знаменатель (степень -1)
-#         denom_part = [arg for arg in expr.args if arg.is_Pow and arg.exp.is_negative]
-#         if denom_part:
-#             v = denom_part[0].base ** (-denom_part[0].exp)
-#             u = expr / denom_part[0]
-#
-#             res_val = (diff(u, var) * v - u * diff(v, var)) / (v ** 2)
-#             steps.append({
-#                 "step_number": step_num,
-#                 "rule": "quotient_rule",
-#                 "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$",
-#                 "before": f"\\frac{{d}}{{d{latex(var)}}} \\left( \\frac{{{latex(u)}}}{{{latex(v)}}} \\right)",
-#                 "after": latex(res_val)
-#             })
-#             # Рекурсивно идем в числитель и знаменатель
-#             steps.extend(format_derivative_steps(u, var, len(steps) + step_num))
-#             steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
-#             return steps
-#
-#     # 3. СЛОЖНАЯ ФУНКЦИЯ (Chain Rule): f(g(x))
-#     elif len(expr.args) == 1 and not expr.is_Symbol:
-#         inner = expr.args[0]  # Внутренняя функция g(x)
-#         if inner != var:
-#             # Создаем временную переменную 'u' для наглядности
-#             u = symbols('u')
-#             outer_f = expr.func(u)
-#             steps.append({
-#                 "step_number": step_num,
-#                 "rule": "chain_rule",
-#                 "description": f"Сложная функция: внешняя ${latex(outer_f)}$, внутренняя $u = {latex(inner)}$.",
-#                 "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-#                 "after": f"\\frac{{d}}{{du}} ({latex(outer_f)}) \\cdot \\frac{{d}}{{d{latex(var)}}} ({latex(inner)})"
-#             })
-#             # Добавляем шаги для внутренней части
-#             steps.extend(format_derivative_steps(inner, var, len(steps) + step_num))
-#
-#     # 4. Базовое правило (степень, sin, cos и т.д.)
-#     else:
-#         res = diff(expr, var)
-#         steps.append({
-#             "step_number": step_num,
-#             "rule": "base_rule",
-#             "description": f"Используем таблицу производных для ${latex(expr)}$.",
-#             "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
-#             "after": latex(res)
-#         })
-#
-#     return steps
-
 def format_derivative_steps(expr, var, step_num=1):
     steps = []
 
@@ -421,6 +317,110 @@ def format_derivative_steps(expr, var, step_num=1):
 
     return steps
 
+# def format_derivative_steps(expr, var, step_num=1):
+#     steps = []
+#
+#     # --- 1. ПРАВИЛО ЧАСТНОГО (ДРОБИ) ---
+#     # Проверяем, является ли выражение дробью
+#     if expr.is_Pow and expr.exp.is_negative:
+#         # Для выражений типа 1/x или u/v
+#         u = sympify(1)  # числитель (условно)
+#         v = expr.base ** (-expr.exp)  # знаменатель
+#
+#         steps.append({
+#             "step_number": step_num,
+#             "rule": "quotient_rule",
+#             "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$.",
+#             "before": f"\\frac{{d}}{{d{latex(var)}}} (\\frac{{{latex(u)}}}{{{latex(v)}}})",
+#             "after": f"\\frac{{{latex(diff(u, var))} \\cdot {latex(v)} - {latex(u)} \\cdot {latex(diff(v, var))}}}{{{latex(v ** 2)}}}"
+#         })
+#         # Рекурсия для числителя и знаменателя, если они сложные
+#         steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
+#
+#     # --- 2. ПРАВИЛО СТЕПЕНИ (x^n) ---
+#     elif isinstance(expr, Pow):
+#         base = expr.base
+#         exp = expr.exp
+#
+#         # Если основание — это переменная x, а степень — число
+#         if base == var and exp.is_number:
+#             res = exp * base ** (exp - 1)
+#             steps.append({
+#                 "step_number": step_num,
+#                 "rule": "power_rule",
+#                 "description": f"Применим правило степени: $(x^n)' = n \\cdot x^{{n-1}}$.",
+#                 "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#                 "after": latex(res)
+#             })
+#         else:
+#             # Если это сложная функция типа (sin(x))^2, сработает Chain Rule
+#             # которое мы писали ранее
+#             pass
+#
+#     # 1. Правило суммы: (f + g)'
+#     elif expr.is_Add:
+#         after_parts = [f"\\frac{{d}}{{d{latex(var)}}} ({latex(arg)})" for arg in expr.args]
+#         steps.append({
+#             "step_number": step_num,
+#             "rule": "sum_rule",
+#             "description": "Производная суммы равна сумме производных",
+#             "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#             "after": " + ".join(after_parts)
+#         })
+#         for arg in expr.args:
+#             steps.extend(format_derivative_steps(arg, var, len(steps) + step_num))
+#
+#     # 2. Правило произведения: (u * v)'
+#     elif expr.is_Mul:
+#         # Ищем знаменатель (степень -1)
+#         denom_part = [arg for arg in expr.args if arg.is_Pow and arg.exp.is_negative]
+#         if denom_part:
+#             v = denom_part[0].base ** (-denom_part[0].exp)
+#             u = expr / denom_part[0]
+#
+#             res_val = (diff(u, var) * v - u * diff(v, var)) / (v ** 2)
+#             steps.append({
+#                 "step_number": step_num,
+#                 "rule": "quotient_rule",
+#                 "description": "Применим правило частного: $(\\frac{u}{v})' = \\frac{u'v - uv'}{v^2}$",
+#                 "before": f"\\frac{{d}}{{d{latex(var)}}} \\left( \\frac{{{latex(u)}}}{{{latex(v)}}} \\right)",
+#                 "after": latex(res_val)
+#             })
+#             # Рекурсивно идем в числитель и знаменатель
+#             steps.extend(format_derivative_steps(u, var, len(steps) + step_num))
+#             steps.extend(format_derivative_steps(v, var, len(steps) + step_num))
+#             return steps
+#
+#     # 3. СЛОЖНАЯ ФУНКЦИЯ (Chain Rule): f(g(x))
+#     elif len(expr.args) == 1 and not expr.is_Symbol:
+#         inner = expr.args[0]  # Внутренняя функция g(x)
+#         if inner != var:
+#             # Создаем временную переменную 'u' для наглядности
+#             u = symbols('u')
+#             outer_f = expr.func(u)
+#             steps.append({
+#                 "step_number": step_num,
+#                 "rule": "chain_rule",
+#                 "description": f"Сложная функция: внешняя ${latex(outer_f)}$, внутренняя $u = {latex(inner)}$.",
+#                 "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#                 "after": f"\\frac{{d}}{{du}} ({latex(outer_f)}) \\cdot \\frac{{d}}{{d{latex(var)}}} ({latex(inner)})"
+#             })
+#             # Добавляем шаги для внутренней части
+#             steps.extend(format_derivative_steps(inner, var, len(steps) + step_num))
+#
+#     # 4. Базовое правило (степень, sin, cos и т.д.)
+#     else:
+#         res = diff(expr, var)
+#         steps.append({
+#             "step_number": step_num,
+#             "rule": "base_rule",
+#             "description": f"Используем таблицу производных для ${latex(expr)}$.",
+#             "before": f"\\frac{{d}}{{d{latex(var)}}} ({latex(expr)})",
+#             "after": latex(res)
+#         })
+#
+#     return steps
+
 @router.get("/derivative")
 async def calculate_derivative(expr: str, var: str = "x"):
     try:
@@ -437,30 +437,9 @@ async def calculate_derivative(expr: str, var: str = "x"):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
 
-@router.post("/derivative-steps")
-async def get_derivative_steps(data: IntegralRequestSchema):
-    try:
-        x = symbols(data.var)
-        # ВАЖНО: используем evaluate=False, чтобы SymPy не упрощал log(x, 10) в дробь сразу
-        clean_expr = data.expr.replace('e**', 'exp')
-        expr = sympify(clean_expr, evaluate=False)
-
-        # Теперь функция format_derivative_steps увидит именно логарифм с основанием 10
-        json_steps = format_derivative_steps(expr, x)
-
-        # Финальный результат считаем как обычно (с упрощением)
-        final_res = diff(expr, x)
-
-        return {
-            "expression": data.expr,
-            "steps": json_steps,
-            "final_answer": latex(final_res)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@router.get("/evaluate")
-async def evaluate_function(data: Annotated[EvaluateSchema, Depends()]):
+#выведение точек графиков производной и интегралов
+@router.get("/evaluate-derivative")
+async def evaluate_function(data: Annotated[EvaluateDerivativeSchema, Depends()]):
     try:
         x = symbols(data.var)
         parsed = sympify(data.expr)
@@ -492,6 +471,63 @@ async def evaluate_function(data: Annotated[EvaluateSchema, Depends()]):
         return {"points": points}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+
+@router.get('/evaluate-integrate')
+async def evaluate_function(data: Annotated[EvaluateIntegralSchema, Depends()]):
+    try:
+        x = symbols(data.var)
+        parsed = sympify(data.expr)
+        derivative = diff(parsed, x)
+
+        f = lambdify(x, parsed, modules="math")
+        df = lambdify(x, derivative, modules="math")
+
+        points = []
+        step = (data.x_max - data.x_min) / (data.n_points - 1)
+        for i in range(data.n_points):
+            x_val = round(data.x_min + step * i, 6)
+            entry: dict = {"x": x_val, "y": None, "dy": None}
+            try:
+                y = float(f(x_val))
+                if math.isfinite(y):
+                    # Keep large finite values — frontend clips them for singularity display
+                    entry["y"] = round(min(max(y, -1e8), 1e8), 6)
+            except Exception:
+                pass
+            try:
+                dy = float(df(x_val))
+                if math.isfinite(dy):
+                    entry["dy"] = round(min(max(dy, -1e8), 1e8), 6)
+            except Exception:
+                pass
+            points.append(entry)
+
+        return {"points": points}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
+
+#поэтапное вычисление производных и интегралов
+@router.post("/derivative-steps")
+async def get_derivative_steps(data: IntegralRequestSchema):
+    try:
+        x = symbols(data.var)
+        # ВАЖНО: используем evaluate=False, чтобы SymPy не упрощал log(x, 10) в дробь сразу
+        clean_expr = data.expr.replace('e**', 'exp')
+        expr = sympify(clean_expr, evaluate=False)
+
+        # Теперь функция format_derivative_steps увидит именно логарифм с основанием 10
+        json_steps = format_derivative_steps(expr, x)
+
+        # Финальный результат считаем как обычно (с упрощением)
+        final_res = diff(expr, x)
+
+        return {
+            "expression": data.expr,
+            "steps": json_steps,
+            "final_answer": latex(final_res)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/integrate-steps", response_model=IntegralResponseSchema)
 async def get_steps(data: IntegralRequestSchema):
@@ -547,18 +583,18 @@ async def get_steps(data: IntegralRequestSchema):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка вычислений: {str(e)}")
 
+#вычисление орбитальных переходов
 @router.post('/orbital-transfers')
 async def orbital_transfers(data: OrbitalTransfersSchema):
     # данные первой орбиты
-    i1 = data.eccentricity_1  # наконение (градусы)
+    i1 = data.inclination_1  # наконение (градусы)
     h1 = data.h1  # высота (км)
 
     # данные второй орбиты
-    i2 = data.eccentricity_2  # наконение (градусы)
+    i2 = data.inclination_2  # наконение (градусы)
     h2 = data.h2  # высота (км)
 
     # константы и другие данные
-    ik = 83  # наклонение космодрома (градусы)
     G = 6.67 * 10 ** (-11)  # (м**3 / кг * с**2)
     Mz = 5.9722 * 10 ** 24  # (кг)
     mz = G * Mz / 1000 ** 3  # земная гравитационная константа (км**3 / с**2)

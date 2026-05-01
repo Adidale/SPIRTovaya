@@ -19,7 +19,7 @@ class UsernameUpdateSchema(BaseModel):
 class EmailUpdateSchema(BaseModel):
     email: EmailStr = Field(max_length=100)
 
-class EvaluateSchema(BaseModel):
+class EvaluateDerivativeSchema(BaseModel):
     expr: str = Field(..., description='Math expression', min_length=1, max_length=512)
     x_min: float = Field(-10.0, description='Start x point', ge=-1e6, le=1e6)
     x_max: float = Field(10.0, description='End x point', ge=-1e6, le=1e6)
@@ -31,6 +31,13 @@ class EvaluateSchema(BaseModel):
         if self.x_max <= self.x_min:
             raise ValueError(f"{self.var}_max must be greater than {self.var}_min")
         return self
+
+class EvaluateIntegralSchema(BaseModel):
+    expr: str = Field(..., description='Math expression', min_length=1, max_length=512)
+    x_min: float = Field(-10.0, description='Start x point', ge=-1e6, le=1e6)
+    x_max: float = Field(10.0, description='End x point', ge=-1e6, le=1e6)
+    n_points: int = Field(100, ge=2, le=1000, description='Number of points')
+    var: str = Field('x', description='variable name', max_length=10)
 
 # Схема для входных данных
 class IntegralRequestSchema(BaseModel):
@@ -70,8 +77,8 @@ class PasswordChangeSchema(BaseModel):
     re_new_password: str
 
 class OrbitalTransfersSchema(BaseModel):
-    eccentricity_1:float = Field(description='Начальное наклонение орбиты')
-    eccentricity_2: float = Field(description='Наклонение целевой орбиты')
+    inclination_1:float = Field(description='Начальное наклонение орбиты')
+    inclination_2: float = Field(description='Наклонение целевой орбиты')
     h1:float = Field(description='Начальная высота орбиты',)
     h2:float = Field(description='Высота целевой орбиты')
     force:float = Field(description='Сила тагя двигательной установки', default=1)
