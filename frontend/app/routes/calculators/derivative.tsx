@@ -255,13 +255,20 @@ function computeYDomain(points: GraphPoint[]): [number, number] {
 function getRuleLabel(rule: string): string {
   const labels: Record<string, string> = {
     exp_rule: "Правило экспоненты",
+    exp_chain_rule: "Экспонента (цепное правило)",
     trig_rule: "Тригонометрическое правило",
     power_rule: "Степенное правило",
     constant_rule: "Производная константы",
     constant_times_rule: "Вынос константы",
+    constant_mul_rule: "Вынос множителя-константы",
     sum_rule: "Разбиение суммы",
     expand_rule: "Раскрытие скобок",
     log_rule: "Логарифмическое правило",
+    log_base_change: "Переход к натуральному логарифму",
+    log_diff_rule: "Логарифмическое дифференцирование",
+    chain_rule: "Цепное правило",
+    quotient_rule: "Правило частного",
+    base_rule: "Базовое правило (таблица производных)",
     special_function: "Без пошагового разбора",
   };
 
@@ -367,7 +374,7 @@ export default function DerivativePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ expr, var: "x" }),
         }),
-        fetch(`${API_BASE_URL}/calculate/evaluate?expr=${encodeURIComponent(expr)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`),
+        fetch(`${API_BASE_URL}/calculate/evaluate-derivative?expr=${encodeURIComponent(expr)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`),
       ]);
       let derivPayload: unknown = null;
       let stepsPayload: unknown = null;
@@ -435,6 +442,11 @@ export default function DerivativePage() {
             value={expr}
             onChange={(e) => setExpr(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === "Enter" && e.shiftKey) {
+                e.preventDefault();
+                void handleCalculate();
+                return;
+              }
               if (e.key === "Backspace") { e.preventDefault(); handleBackspace(); }
             }}
             className="form-control font-monospace mb-2"
@@ -443,6 +455,7 @@ export default function DerivativePage() {
             spellCheck={false}
             style={{ resize: "none" }}
           />
+          <p className="small text-secondary mb-2">Подсказка: отправка по Shift + Enter.</p>
 
           {/* Category tabs */}
           <ul className="nav nav-pills gap-1 mb-2 flex-wrap">

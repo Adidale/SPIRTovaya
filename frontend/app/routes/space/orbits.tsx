@@ -5,8 +5,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
 
 type OrbitalTransferRequest = {
-  eccentricity_1: number;
-  eccentricity_2: number;
+  inclination_1: number;
+  inclination_2: number;
   h1: number;
   h2: number;
   force: number;
@@ -77,18 +77,18 @@ function toRequestPayload(
   to: OrbitInput,
   engine: EngineInput,
 ): OrbitalTransferRequest | null {
-  const eccentricity_1 = toNumber(from.eccentricity);
-  const eccentricity_2 = toNumber(to.eccentricity);
+  const inclination_1 = toNumber(from.eccentricity);
+  const inclination_2 = toNumber(to.eccentricity);
   const h1 = toNumber(from.h);
   const h2 = toNumber(to.h);
   const force = toNumber(engine.force);
   const impulse = toNumber(engine.impulse);
 
-  if ([eccentricity_1, eccentricity_2, h1, h2, force, impulse].some((v) => v === null)) {
+  if ([inclination_1, inclination_2, h1, h2, force, impulse].some((v) => v === null)) {
     return null;
   }
 
-  return { eccentricity_1, eccentricity_2, h1, h2, force, impulse } as OrbitalTransferRequest;
+  return { inclination_1, inclination_2, h1, h2, force, impulse } as OrbitalTransferRequest;
 }
 
 function formatNumber(value: number, fractionDigits = 4): string {
@@ -105,6 +105,15 @@ export const meta: MetaFunction = () => {
     { name: "description", content: "Калькулятор импульса перехода между орбитами." },
   ];
 };
+
+function VarLabel({ base, sub }: { base: string; sub?: string }) {
+  return (
+    <span>
+      <em>{base}</em>
+      {sub ? <sub>{sub}</sub> : null}
+    </span>
+  );
+}
 
 export default function OrbitsPage() {
   const [orbits, setOrbits] = useState<OrbitInput[]>(INITIAL_ORBITS);
@@ -396,7 +405,7 @@ export default function OrbitsPage() {
                   </div>
                   <div className="row g-2">
                     <div className="col-12 col-md-6">
-                      <label className="form-label small text-secondary mb-1">Эксцентриситет/наклонение, °</label>
+                      <label className="form-label small text-secondary mb-1">Наклонение, °</label>
                       <input
                         type="number"
                         step="any"
@@ -504,8 +513,8 @@ export default function OrbitsPage() {
                   <div className="fw-semibold">Орбита {hoveredOrbit.index + 1}</div>
                   <div>Высота: {orbits[hoveredOrbit.index]?.h || "—"} км</div>
                   <div>Угол к экватору: {orbits[hoveredOrbit.index]?.eccentricity || "—"}°</div>
-                  <div>Тяга: {engine.force || "—"}</div>
-                  <div>Импульс: {engine.impulse || "—"}</div>
+                  <div>Тяга: {engine.force || "—"} кг·км/с²</div>
+                  <div>Импульс: {engine.impulse || "—"} км/с</div>
                 </div>
               )}
             </div>
@@ -544,55 +553,83 @@ export default function OrbitsPage() {
                     <span>Орбита {item.toOrbit}</span>
                   </div>
                   <div className="small d-grid gap-1 mb-3">
-                    <div>i1: {formatNumber(item.payload.start_data.i1)}°</div>
-                    <div>h1: {formatNumber(item.payload.start_data.h1)} км</div>
-                    <div>i2: {formatNumber(item.payload.start_data.i2)}°</div>
-                    <div>h2: {formatNumber(item.payload.start_data.h2)} км</div>
-                    <div>Тяга этапа: {formatNumber(item.payload.start_data.force)}</div>
-                    <div>Импульс этапа: {formatNumber(item.payload.start_data.impulse)}</div>
+                    <div>
+                      <VarLabel base="i" sub="1" />: {formatNumber(item.payload.start_data.i1)}°
+                    </div>
+                    <div>
+                      <VarLabel base="h" sub="1" />: {formatNumber(item.payload.start_data.h1)} км
+                    </div>
+                    <div>
+                      <VarLabel base="i" sub="2" />: {formatNumber(item.payload.start_data.i2)}°
+                    </div>
+                    <div>
+                      <VarLabel base="h" sub="2" />: {formatNumber(item.payload.start_data.h2)} км
+                    </div>
+                    <div>Тяга этапа: {formatNumber(item.payload.start_data.force)} кг·км/с²</div>
+                    <div>Импульс этапа: {formatNumber(item.payload.start_data.impulse)} км/с</div>
                   </div>
                   <div className="d-grid gap-2">
                     <div className="d-flex justify-content-between">
-                      <span>dV1</span>
+                      <span>
+                        <VarLabel base="dV" sub="1" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.dV1)} км/с</strong>
                     </div>
                     <div className="d-flex justify-content-between">
-                      <span>dV2</span>
+                      <span>
+                        <VarLabel base="dV" sub="2" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.dV2)} км/с</strong>
                     </div>
                     <div className="d-flex justify-content-between">
-                      <span>dV3</span>
+                      <span>
+                        <VarLabel base="dV" sub="3" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.dV3)} км/с</strong>
                     </div>
                     <hr className="my-1" />
                     <div className="d-flex justify-content-between">
-                      <span>Mt1</span>
+                      <span>
+                        <VarLabel base="Mt" sub="1" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.Mt1)} кг</strong>
                     </div>
                     <div className="d-flex justify-content-between">
-                      <span>Mt2</span>
+                      <span>
+                        <VarLabel base="Mt" sub="2" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.Mt2)} кг</strong>
                     </div>
                     <div className="d-flex justify-content-between">
-                      <span>Mt3</span>
+                      <span>
+                        <VarLabel base="Mt" sub="3" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.Mt3)} кг</strong>
                     </div>
                     <hr className="my-1" />
                     <div className="d-flex justify-content-between">
-                      <span>t1</span>
+                      <span>
+                        <VarLabel base="t" sub="1" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.t1)} c</strong>
                     </div>
                     <div className="d-flex justify-content-between">
-                      <span>t2</span>
+                      <span>
+                        <VarLabel base="t" sub="2" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.t2)} c</strong>
                     </div>
                     <div className="d-flex justify-content-between">
-                      <span>t3</span>
+                      <span>
+                        <VarLabel base="t" sub="3" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.t3)} c</strong>
                     </div>
                     <hr className="my-1" />
                     <div className="d-flex justify-content-between">
-                      <span>Mrst</span>
+                      <span>
+                        <VarLabel base="Mrst" />
+                      </span>
                       <strong>{formatNumber(item.payload.answer.Mrst)} кг/с</strong>
                     </div>
                   </div>

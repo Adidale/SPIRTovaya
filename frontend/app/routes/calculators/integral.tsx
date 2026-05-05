@@ -38,7 +38,7 @@ type IntegralResult = {
   final_answer: string;
 };
 
-type GraphPoint = { x: number; y: number | null; integral: number | null };
+type GraphPoint = { x: number; y: number | null; dy: number | null };
 
 const PAD: Record<Category, PadButton[]> = {
   numpad: [
@@ -239,7 +239,7 @@ function renderLatexInline(tex: string): string {
 
 function computeYDomain(points: GraphPoint[]): [number, number] {
   const ys = points
-    .flatMap((p) => [p.y, p.integral])
+    .flatMap((p) => [p.y, p.dy])
     .filter((v): v is number => v !== null)
     .sort((a, b) => a - b);
 
@@ -377,7 +377,7 @@ export default function IntegralPage() {
           body: JSON.stringify({ expr, var: "x" }),
         }),
         fetch(
-          `${API_BASE_URL}/calculate/integral-evaluate?expr=${encodeURIComponent(expr)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`,
+          `${API_BASE_URL}/calculate/evaluate-integrate?expr=${encodeURIComponent(expr)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`,
         ),
       ]);
 
@@ -445,6 +445,11 @@ export default function IntegralPage() {
             value={expr}
             onChange={(e) => setExpr(e.target.value)}
             onKeyDown={(e) => {
+              if (e.key === "Enter" && e.shiftKey) {
+                e.preventDefault();
+                void handleCalculate();
+                return;
+              }
               if (e.key === "Backspace") {
                 e.preventDefault();
                 handleBackspace();
@@ -456,6 +461,7 @@ export default function IntegralPage() {
             spellCheck={false}
             style={{ resize: "none" }}
           />
+          <p className="small text-secondary mb-2">Подсказка: отправка по Shift + Enter.</p>
 
           <ul className="nav nav-pills gap-1 mb-2 flex-wrap">
             {(Object.keys(PAD) as Category[]).map((cat) => (
@@ -616,7 +622,7 @@ export default function IntegralPage() {
                   />
                   <Line
                     type="monotone"
-                    dataKey="integral"
+                    dataKey="dy"
                     stroke="#f59e0b"
                     dot={false}
                     strokeWidth={2}
