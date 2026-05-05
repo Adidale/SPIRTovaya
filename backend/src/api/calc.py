@@ -599,9 +599,11 @@ async def orbital_transfers(data: OrbitalTransfersSchema):
     Mz = 5.9722 * 10 ** 24  # (кг)
     mz = G * Mz / 1000 ** 3  # земная гравитационная константа (км**3 / с**2)
     Rz = 6371  # радиус земли (км)
-    Mrb = 6475  # масса разгонного блока (кг)
-    Ma = 280  # масса аппарата (кг)
-    Mk = Mrb + Ma  # масса конструкции (кг)
+    # Mrb = 6475 # масса разгонного блока (кг)
+    # Ma = 280  # масса аппарата (кг)
+    # Mk = Mrb + Ma  # масса конструкции (кг)
+    Mk = data.sat_mass
+
     di = math.radians(abs(i2 - i1))  # изменение угла в радианах(питон считает в радианах)
     Iyd = data.impulse  # удельный импульс двигателя в вакууме (км/c)
     Pdy = data.force  # сила тяги двигатьной установки (кг·км/с**2)
@@ -630,6 +632,7 @@ async def orbital_transfers(data: OrbitalTransfersSchema):
 
     return {
         "start_data": {
+            'sat_mass':Mk,
             'i1':i1,
             'h1':h1,
             'i2':i2,

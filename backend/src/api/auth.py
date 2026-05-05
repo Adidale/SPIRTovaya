@@ -19,7 +19,7 @@ from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 
 conf = ConnectionConfig(
     MAIL_USERNAME="sprtcompanyone@gmail.com",
-    MAIL_PASSWORD="grksfyjtmaizjorx",
+    MAIL_PASSWORD="fdixooochdbywhoa",
     MAIL_FROM="sprtcompanyone@gmail.com",
     MAIL_PORT=465,
     MAIL_SERVER="smtp.gmail.com",

@@ -77,6 +77,7 @@ class PasswordChangeSchema(BaseModel):
     re_new_password: str
 
 class OrbitalTransfersSchema(BaseModel):
+    sat_mass: float = Field(description='масса аппарата с топливом')
     inclination_1:float = Field(description='Начальное наклонение орбиты')
     inclination_2: float = Field(description='Наклонение целевой орбиты')
     h1:float = Field(description='Начальная высота орбиты',)
