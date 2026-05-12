@@ -4,6 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sympy import symbols, diff, sympify, latex, lambdify, integrate, exp, sinh, cosh
 from sympy.integrals.manualintegrate import *
 from .schemas import EvaluateIntegralSchema, EvaluateDerivativeSchema, IntegralRequestSchema, IntegralResponseSchema, OrbitalTransfersSchema
+from db.session import get_db
+from sqlalchemy.orm import Session
+from core.security import auth
+from models import User
+from datetime import datetime
 
 
 router = APIRouter(prefix="/calculate", tags=['Calculations'])
@@ -508,7 +513,9 @@ async def evaluate_function(data: Annotated[EvaluateIntegralSchema, Depends()]):
 
 #поэтапное вычисление производных и интегралов
 @router.post("/derivative-steps")
-async def get_derivative_steps(data: IntegralRequestSchema):
+async def get_derivative_steps(data: IntegralRequestSchema,
+                               db: Session = Depends(get_db),
+                               current_user: User = Depends(auth.get_current_subject)):
     try:
         x = symbols(data.var)
         # ВАЖНО: используем evaluate=False, чтобы SymPy не упрощал log(x, 10) в дробь сразу
@@ -521,16 +528,35 @@ async def get_derivative_steps(data: IntegralRequestSchema):
         # Финальный результат считаем как обычно (с упрощением)
         final_res = diff(expr, x)
 
-        return {
+        result = {
             "expression": data.expr,
             "steps": json_steps,
             "final_answer": latex(final_res)
         }
+
+        db_entry = {'type': 'derivative-steps',
+                    'start_date': str(expr),
+                    'result': str(result['final_answer']),
+                    'date': datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+        new_history = [db_entry] + (current_user.last_calc or [])
+        current_user.last_calc = new_history[:20]  # Присваиваем новый объект
+
+        try:
+            db.add(current_user)
+            await db.commit()
+            await db.refresh(current_user)  # Обновляем объект из базы
+        except Exception as e:
+            print(f'ERROR: {e}')
+
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/integrate-steps", response_model=IntegralResponseSchema)
-async def get_steps(data: IntegralRequestSchema):
+async def get_steps(data: IntegralRequestSchema,
+                    db: Session = Depends(get_db),
+                    current_user: User = Depends(auth.get_current_subject)):
     try:
         x = symbols(data.var)
         parsed = sympify(data.expr)
@@ -573,19 +599,38 @@ async def get_steps(data: IntegralRequestSchema):
                 "after": final_latex
             })
 
-        return IntegralResponseSchema(
+        result = IntegralResponseSchema(
             expression=data.expr,
             total_steps=len(json_steps),
             steps=json_steps,
             final_answer=final_latex
         )
 
+        db_entry = {'type': 'integrate-steps',
+                    'start_date': result.expression,
+                    'result': result.final_answer,
+                    'date': datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+        new_history = [db_entry] + (current_user.last_calc or [])
+        current_user.last_calc = new_history[:20]  # Присваиваем новый объект
+
+        try:
+            db.add(current_user)
+            await db.commit()
+            await db.refresh(current_user)  # Обновляем объект из базы
+        except Exception as e:
+            print(f'ERROR: {e}')
+
+        return result
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка вычислений: {str(e)}")
 
 #вычисление орбитальных переходов
 @router.post('/orbital-transfers')
-async def orbital_transfers(data: OrbitalTransfersSchema):
+async def orbital_transfers(data: OrbitalTransfersSchema,
+                            db: Session = Depends(get_db),
+                            current_user: User = Depends(auth.get_current_subject)):
     # данные первой орбиты
     i1 = data.inclination_1  # наконение (градусы)
     h1 = data.h1  # высота (км)
@@ -630,7 +675,7 @@ async def orbital_transfers(data: OrbitalTransfersSchema):
     t2 = Mt2 / Mrst  # время включения двигателя для 2 импульса
     t3 = Mt3 / Mrst  # время включения двигателя для 3 импульса
 
-    return {
+    result = {
         "start_data": {
             'sat_mass':Mk,
             'i1':i1,
@@ -653,3 +698,20 @@ async def orbital_transfers(data: OrbitalTransfersSchema):
             't3':t3
         }
     }
+
+    db_entry = {'type':'orbital-transfers',
+                'start_date': result['start_data'],
+                'result': result['answer'],
+                'date': datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+    new_history = [db_entry] + (current_user.last_calc or [])
+    current_user.last_calc = new_history[:20]  # Присваиваем новый объект
+
+    try:
+        db.add(current_user)
+        await db.commit()
+        await db.refresh(current_user)  # Обновляем объект из базы
+    except Exception as e:
+        print(f'ERROR: {e}')
+
+    return result

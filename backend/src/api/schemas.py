@@ -1,4 +1,4 @@
-from typing import Self, List
+from typing import Self, List, Any
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 class UserSchemaRegister(BaseModel):
@@ -11,10 +11,16 @@ class UserSchemaLogin(BaseModel):
     email: EmailStr = Field(max_length=100)
     password: str = Field(min_length=8, max_length=20)
 
-
 class UsernameUpdateSchema(BaseModel):
     username: str = Field(min_length=5, max_length=20)
 
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    last_calc: List[Any] = []
+
+    class Config:
+        from_attributes = True
 
 class EmailUpdateSchema(BaseModel):
     email: EmailStr = Field(max_length=100)
