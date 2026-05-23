@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { Route } from "./+types/derivative";
+import { useLocation, useNavigate } from "react-router";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import {
@@ -13,6 +14,17 @@ import {
   ReferenceLine,
 } from "recharts";
 import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
+import { isAuthenticatedLocally, getLoginRedirectUrl } from "~/lib/auth";
+import {
+  getCalculationCredentials,
+  getRestoreSessionKey,
+  type PersistCalculationOptions,
+  readSavedRestoreState,
+  SaveAuthError,
+  saveDerivativeCalculation,
+  shouldPersistToProfile,
+  shouldRunRestoreSession,
+} from "~/lib/saved-calculations";
 import { KatexMixedDescription } from "~/components/katex-mixed-description";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -294,17 +306,24 @@ const CHART_WIDTH = 2400;
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function DerivativePage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [expr, setExpr]               = useState("");
   const [activeTab, setActiveTab]     = useState<Category>("basic");
   const [derivResult, setDerivResult] = useState<DerivResult | null>(null);
   const [derivSteps, setDerivSteps]   = useState<DerivativeStepsResult | null>(null);
   const [graphPoints, setGraphPoints] = useState<GraphPoint[]>([]);
   const [loading, setLoading]         = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [error, setError]             = useState<string | null>(null);
 
   const previewRef     = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLTextAreaElement>(null);
   const graphScrollRef = useRef<HTMLDivElement>(null);
+  const restoredRef = useRef(false);
+  const restoredContext = useRef<{ index: number; baseline: string } | null>(null);
+  const [isRestoredDirty, setIsRestoredDirty] = useState(false);
 
   // Live KaTeX preview
   useEffect(() => {
@@ -359,22 +378,70 @@ export default function DerivativePage() {
     setTimeout(() => { el.focus(); el.setSelectionRange(cur, cur); }, 0);
   }, [expr]);
 
-  const handleCalculate = async () => {
-    if (!expr.trim()) return;
+  useEffect(() => {
+    const ctx = restoredContext.current;
+    if (!ctx) {
+      setIsRestoredDirty(false);
+      return;
+    }
+    setIsRestoredDirty(expr.trim() !== ctx.baseline);
+  }, [expr]);
+
+  const runCalculation = useCallback(async (exprValue: string, options?: PersistCalculationOptions): Promise<boolean> => {
+    const trimmed = exprValue.trim();
+    if (!trimmed) return false;
+    const viewingSaved = options?.persistToProfile === false;
     setLoading(true);
     setError(null);
-    setDerivResult(null);
-    setDerivSteps(null);
+    setSaveMessage(null);
+    if (!viewingSaved) {
+      setDerivResult(null);
+      setDerivSteps(null);
+    }
     setGraphPoints([]);
+    const persist = shouldPersistToProfile(isAuthenticatedLocally(), options);
     try {
+      if (viewingSaved) {
+        const [dRes, eRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/calculate/derivative?expr=${encodeURIComponent(trimmed)}&var=x`),
+          fetch(
+            `${API_BASE_URL}/calculate/evaluate-derivative?expr=${encodeURIComponent(trimmed)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`,
+          ),
+        ]);
+        let derivPayload: unknown = null;
+        let graphPayload: unknown = null;
+        try {
+          derivPayload = await dRes.json();
+        } catch {
+          derivPayload = null;
+        }
+        try {
+          graphPayload = await eRes.json();
+        } catch {
+          graphPayload = null;
+        }
+        if (!dRes.ok) {
+          throw new Error(getFastApiErrorDetail(derivPayload) || "Ошибка вычисления производной.");
+        }
+        if (!eRes.ok) {
+          throw new Error(getFastApiErrorDetail(graphPayload) || "Ошибка построения графика.");
+        }
+        setDerivResult((prev) => prev ?? (derivPayload as DerivResult));
+        setGraphPoints((graphPayload as { points: GraphPoint[] }).points);
+        return true;
+      }
+
       const [dRes, sRes, eRes] = await Promise.all([
-        fetch(`${API_BASE_URL}/calculate/derivative?expr=${encodeURIComponent(expr)}&var=x`),
+        fetch(`${API_BASE_URL}/calculate/derivative?expr=${encodeURIComponent(trimmed)}&var=x`),
         fetch(`${API_BASE_URL}/calculate/derivative-steps`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ expr, var: "x" }),
+          credentials: getCalculationCredentials(persist),
+          body: JSON.stringify({ expr: trimmed, var: "x" }),
         }),
-        fetch(`${API_BASE_URL}/calculate/evaluate-derivative?expr=${encodeURIComponent(expr)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`),
+        fetch(
+          `${API_BASE_URL}/calculate/evaluate-derivative?expr=${encodeURIComponent(trimmed)}&x_min=${GRAPH_MIN}&x_max=${GRAPH_MAX}&n_points=${GRAPH_PTS}&var=x`,
+        ),
       ]);
       let derivPayload: unknown = null;
       let stepsPayload: unknown = null;
@@ -400,10 +467,99 @@ export default function DerivativePage() {
       setDerivResult(derivPayload as DerivResult);
       setDerivSteps(stepsPayload as DerivativeStepsResult);
       setGraphPoints((graphPayload as { points: GraphPoint[] }).points);
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Неизвестная ошибка.");
+      return false;
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const persistAfterChange = async (trimmed: string) => {
+    const ctx = restoredContext.current;
+    if (!ctx || trimmed === ctx.baseline) return;
+    await saveDerivativeCalculation(trimmed, { replaceIndex: ctx.index });
+    restoredContext.current = { index: ctx.index, baseline: trimmed };
+    setIsRestoredDirty(false);
+    setSaveMessage("Изменения сохранены в профиле.");
+  };
+
+  const handleCalculate = async () => {
+    const trimmed = expr.trim();
+    if (!trimmed) return;
+    const ctx = restoredContext.current;
+    const dirty = Boolean(ctx && trimmed !== ctx.baseline);
+
+    if (dirty && isAuthenticatedLocally()) {
+      const ok = await runCalculation(trimmed, { persistToProfile: false });
+      if (!ok) return;
+      try {
+        await persistAfterChange(trimmed);
+      } catch (e) {
+        if (e instanceof SaveAuthError) {
+          navigate(getLoginRedirectUrl(location.pathname));
+          return;
+        }
+        setError(e instanceof Error ? e.message : "Не удалось сохранить изменения.");
+      }
+      return;
+    }
+
+    void runCalculation(trimmed, { persistToProfile: true });
+  };
+
+  useEffect(() => {
+    const restore = readSavedRestoreState(location.state);
+    if (!restore || restore.entry.type !== "derivative-steps" || restoredRef.current) return;
+
+    const sessionKey = getRestoreSessionKey(restore.entry, restore.index);
+    if (!shouldRunRestoreSession(sessionKey)) return;
+
+    restoredRef.current = true;
+    const inputExpr = typeof restore.entry.start_date === "string" ? restore.entry.start_date : "";
+    if (!inputExpr) return;
+
+    restoredContext.current = { index: restore.index, baseline: inputExpr.trim() };
+    setExpr(inputExpr);
+    if (typeof restore.entry.result === "string" && restore.entry.result) {
+      setDerivResult({ plain_text: inputExpr, latex: restore.entry.result });
+    }
+
+    navigate(location.pathname, { replace: true, state: null });
+    void runCalculation(inputExpr, { persistToProfile: false });
+  }, [location.pathname, location.state, navigate, runCalculation]);
+
+  const handleSave = async () => {
+    if (!expr.trim()) return;
+    if (!isAuthenticatedLocally()) {
+      navigate(getLoginRedirectUrl(location.pathname));
+      return;
+    }
+
+    setSaving(true);
+    setSaveMessage(null);
+    setError(null);
+    try {
+      const trimmed = expr.trim();
+      const ctx = restoredContext.current;
+      const replaceIndex = ctx && trimmed !== ctx.baseline ? ctx.index : undefined;
+      await saveDerivativeCalculation(trimmed, { replaceIndex });
+      if (ctx) {
+        restoredContext.current = { index: ctx.index, baseline: trimmed };
+        setIsRestoredDirty(false);
+      }
+      setSaveMessage(
+        replaceIndex !== undefined ? "Изменения сохранены в профиле." : "Расчёт сохранён в профиле.",
+      );
+    } catch (e) {
+      if (e instanceof SaveAuthError) {
+        navigate(getLoginRedirectUrl(location.pathname));
+        return;
+      }
+      setError(e instanceof Error ? e.message : "Не удалось сохранить расчёт.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -493,7 +649,7 @@ export default function DerivativePage() {
             <div className="d-flex gap-2 align-items-center flex-wrap">
               <button
                 className="btn btn-dark px-4"
-                onClick={handleCalculate}
+                onClick={() => void handleCalculate()}
                 disabled={loading || !expr.trim()}
               >
                 {loading
@@ -511,9 +667,24 @@ export default function DerivativePage() {
               </button>
             </div>
 
-            <a href="#" className="btn btn-primary">Сохранить</a>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void handleSave()}
+              disabled={saving || loading || !expr.trim()}
+            >
+              {saving ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" />
+                  Сохранение…
+                </>
+              ) : (
+                "Сохранить"
+              )}
+            </button>
           </div>
 
+          {saveMessage && <div className="alert alert-success py-2 mt-3 mb-0">{saveMessage}</div>}
           {error && <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div>}
 
           {derivSteps && derivSteps.steps.length > 0 && (

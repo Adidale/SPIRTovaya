@@ -2,8 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { Route } from "./+types/login";
 import { Form, Link, useNavigate, useSearchParams } from "react-router";
 import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
-
-const AUTH_STORAGE_KEY = "spirtovaya-authenticated";
+import { AUTH_STORAGE_KEY } from "~/lib/auth";
 
 async function loginUser(email: string, password: string) {
   const response = await fetch(`${API_BASE_URL}/login`, {
@@ -77,7 +76,8 @@ export default function LoginPage() {
       }
       localStorage.setItem(AUTH_STORAGE_KEY, "true");
       window.dispatchEvent(new Event("spirtovaya-auth-changed"));
-      navigate("/");
+      const redirect = searchParams.get("redirect");
+      navigate(redirect && redirect.startsWith("/") ? redirect : "/");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Не удалось войти.";

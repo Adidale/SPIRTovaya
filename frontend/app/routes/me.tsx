@@ -1,14 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import type { Route } from "./+types/me";
 import { useNavigate } from "react-router";
 import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
-
-const AUTH_STORAGE_KEY = "spirtovaya-authenticated";
+import { AUTH_STORAGE_KEY } from "~/lib/auth";
+import {
+  deleteSavedCalculation,
+  formatEntryPreview,
+  getCalculatorPath,
+  getTypeTitle,
+  SaveAuthError,
+  type SavedCalculationEntry,
+} from "~/lib/saved-calculations";
+import { getLoginRedirectUrl } from "~/lib/auth";
+import "./me.css";
 
 type UserProfile = {
   username: string;
   email: string;
   active: boolean;
+  last_calc?: SavedCalculationEntry[] | null;
 };
 
 export function meta({}: Route.MetaArgs) {
@@ -149,6 +159,8 @@ export default function MePage() {
   const [activeTab, setActiveTab] = useState<Tab>("tasks");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deletingCalcIndex, setDeletingCalcIndex] = useState<number | null>(null);
+  const [tasksNotice, setTasksNotice] = useState<string | null>(null);
 
   const fetchProfile = async () => {
     const response = await fetch(`${API_BASE_URL}/me`, {
@@ -182,6 +194,41 @@ export default function MePage() {
 
     void loadProfile();
   }, [navigate]);
+
+  const handleDeleteCalculation = async (index: number, event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setTasksNotice(null);
+    setDeletingCalcIndex(index);
+
+    try {
+      const removedOnServer = await deleteSavedCalculation(index);
+      if (removedOnServer) {
+        await fetchProfile();
+        setTasksNotice(null);
+        return;
+      }
+
+      setUser((prev) => {
+        if (!prev?.last_calc) return prev;
+        const next = prev.last_calc.filter((_, i) => i !== index);
+        return { ...prev, last_calc: next };
+      });
+      setTasksNotice(
+        "Расчёт убран из списка. Удаление на сервере будет доступно после обновления API.",
+      );
+    } catch (e) {
+      if (e instanceof SaveAuthError) {
+        navigate(getLoginRedirectUrl("/me"));
+        return;
+      }
+      setTasksNotice(
+        e instanceof Error ? e.message : "Не удалось удалить расчёт.",
+      );
+    } finally {
+      setDeletingCalcIndex(null);
+    }
+  };
 
   const handleLogout = async () => {
     setLogoutLoading(true);
@@ -314,8 +361,57 @@ export default function MePage() {
           {activeTab === "tasks" && (
             <>
               <h1>Мои задачи</h1>
-              <div className="row mt-5">
-                <p className="text-center text-secondary fs-5">У вас нет задач</p>
+              {tasksNotice && (
+                <div className="alert alert-info py-2 mt-3 mb-0">{tasksNotice}</div>
+              )}
+              <div className="mt-4">
+                {user.last_calc && user.last_calc.length > 0 ? (
+                  <div className="list-group">
+                    {user.last_calc.map((entry, index) => (
+                      <div
+                        key={`${entry.type}-${entry.date}-${index}`}
+                        className="list-group-item saved-calc-item d-flex align-items-stretch p-0"
+                      >
+                        <button
+                          type="button"
+                          className="saved-calc-item__open btn text-start border-0 flex-grow-1 p-3 rounded-0"
+                          onClick={() =>
+                            navigate(getCalculatorPath(entry.type), {
+                              state: { saved: entry, savedIndex: index },
+                            })
+                          }
+                        >
+                          <div className="d-flex justify-content-between align-items-start gap-3 w-100">
+                            <div>
+                              <div className="fw-semibold">{getTypeTitle(entry.type)}</div>
+                              <div className="small text-secondary mt-1">
+                                {formatEntryPreview(entry)}
+                              </div>
+                            </div>
+                            <span className="small text-secondary text-nowrap">{entry.date}</span>
+                          </div>
+                        </button>
+                        <div className="saved-calc-item__actions d-flex align-items-center pe-2">
+                          <button
+                            type="button"
+                            className="btn btn-outline-danger btn-sm"
+                            title="Удалить"
+                            disabled={deletingCalcIndex === index}
+                            onClick={(event) => void handleDeleteCalculation(index, event)}
+                          >
+                            {deletingCalcIndex === index ? (
+                              <span className="spinner-border spinner-border-sm" />
+                            ) : (
+                              <i className="bx bx-trash" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-secondary fs-5 mt-5">У вас нет задач</p>
+                )}
               </div>
             </>
           )}

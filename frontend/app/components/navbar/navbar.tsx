@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { API_BASE_URL } from "~/lib/api";
+import { AUTH_STORAGE_KEY } from "~/lib/auth";
 import "./navbar.css";
-
-const AUTH_STORAGE_KEY = "spirtovaya-authenticated";
 
 type NavChild = { pathname: string; label: string };
 type NavLink = { id: string; label: string; icon: string; children: NavChild[] };

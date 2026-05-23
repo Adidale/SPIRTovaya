@@ -1,8 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type { MetaFunction } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
+import { getLoginRedirectUrl, isAuthenticatedLocally } from "~/lib/auth";
+import {
+  hasOrbitalStoredResult,
+  orbitalStartDataToForm,
+  type PersistCalculationOptions,
+  readSavedRestoreState,
+  SaveAuthError,
+  saveOrbitalTransfers,
+  getCalculationCredentials,
+  getRestoreSessionKey,
+  serializeOrbitsForm,
+  shouldPersistToProfile,
+  shouldRunRestoreSession,
+  type OrbitalTransferPayload,
+} from "~/lib/saved-calculations";
 
 type OrbitalTransferRequest = {
   sat_mass: number;
@@ -120,13 +136,20 @@ function VarLabel({ base, sub }: { base: string; sub?: string }) {
 }
 
 export default function OrbitsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [orbits, setOrbits] = useState<OrbitInput[]>(INITIAL_ORBITS);
   const [engine, setEngine] = useState<EngineInput>(INITIAL_ENGINE);
   const [results, setResults] = useState<TransitionResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hoveredOrbit, setHoveredOrbit] = useState<HoveredOrbit | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const restoredRef = useRef(false);
+  const restoredContext = useRef<{ index: number; baseline: string } | null>(null);
+  const [isRestoredDirty, setIsRestoredDirty] = useState(false);
 
   const parsedOrbits = useMemo(
     () =>
@@ -311,59 +334,207 @@ export default function OrbitsPage() {
     setError(null);
   };
 
-  const handleCalculate = async () => {
-    if (orbits.length < 2) {
-      setError("Добавьте как минимум две орбиты для расчёта.");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setResults([]);
-
-    try {
-      const collected: TransitionResult[] = [];
-
-      for (let i = 0; i < orbits.length - 1; i++) {
-        const payload = toRequestPayload(orbits[i], orbits[i + 1], engine);
+  const collectTransitionPayloads = useCallback(
+    (orbitInputs: OrbitInput[], engineInputs: EngineInput): OrbitalTransferPayload[] => {
+      const payloads: OrbitalTransferPayload[] = [];
+      for (let i = 0; i < orbitInputs.length - 1; i++) {
+        const payload = toRequestPayload(orbitInputs[i], orbitInputs[i + 1], engineInputs);
         if (!payload) {
           throw new Error(
             `Проверьте значения для орбит ${i + 1} и ${i + 2}, а также параметры двигателя.`,
           );
         }
+        payloads.push(payload);
+      }
+      return payloads;
+    },
+    [],
+  );
 
-        const response = await fetch(`${API_BASE_URL}/calculate/orbital-transfers`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+  const formSnapshot = useCallback(
+    (orbitInputs: OrbitInput[], engineInputs: EngineInput) =>
+      serializeOrbitsForm(orbitInputs, engineInputs),
+    [],
+  );
 
-        let data: unknown = null;
-        try {
-          data = await response.json();
-        } catch {
-          data = null;
-        }
+  useEffect(() => {
+    const ctx = restoredContext.current;
+    if (!ctx) {
+      setIsRestoredDirty(false);
+      return;
+    }
+    setIsRestoredDirty(formSnapshot(orbits, engine) !== ctx.baseline);
+  }, [orbits, engine, formSnapshot]);
 
-        if (!response.ok) {
-          throw new Error(
-            getFastApiErrorDetail(data) ||
-              `Не удалось выполнить расчёт перехода для орбит ${i + 1} → ${i + 2}.`,
-          );
-        }
-
-        collected.push({
-          fromOrbit: i + 1,
-          toOrbit: i + 2,
-          payload: data as OrbitalTransferResponse,
-        });
+  const runCalculation = useCallback(
+    async (
+      orbitInputs: OrbitInput[],
+      engineInputs: EngineInput,
+      options?: PersistCalculationOptions,
+    ): Promise<boolean> => {
+      if (orbitInputs.length < 2) {
+        setError("Добавьте как минимум две орбиты для расчёта.");
+        return false;
       }
 
-      setResults(collected);
+      setLoading(true);
+      setError(null);
+      setSaveMessage(null);
+      setResults([]);
+
+      try {
+        const payloads = collectTransitionPayloads(orbitInputs, engineInputs);
+        const collected: TransitionResult[] = [];
+        const persist = shouldPersistToProfile(isAuthenticatedLocally(), options);
+
+        for (let i = 0; i < payloads.length; i++) {
+          const response = await fetch(`${API_BASE_URL}/calculate/orbital-transfers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: getCalculationCredentials(persist),
+            body: JSON.stringify(payloads[i]),
+          });
+
+          let data: unknown = null;
+          try {
+            data = await response.json();
+          } catch {
+            data = null;
+          }
+
+          if (!response.ok) {
+            throw new Error(
+              getFastApiErrorDetail(data) ||
+                `Не удалось выполнить расчёт перехода для орбит ${i + 1} → ${i + 2}.`,
+            );
+          }
+
+          collected.push({
+            fromOrbit: i + 1,
+            toOrbit: i + 2,
+            payload: data as OrbitalTransferResponse,
+          });
+        }
+
+        setResults(collected);
+        return true;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Неизвестная ошибка.");
+        return false;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [collectTransitionPayloads],
+  );
+
+  const persistAfterChange = async (orbitInputs: OrbitInput[], engineInputs: EngineInput) => {
+    const ctx = restoredContext.current;
+    const snapshot = formSnapshot(orbitInputs, engineInputs);
+    if (!ctx || snapshot === ctx.baseline) return;
+    const payloads = collectTransitionPayloads(orbitInputs, engineInputs);
+    await saveOrbitalTransfers(payloads, { replaceIndex: ctx.index });
+    restoredContext.current = { index: ctx.index, baseline: snapshot };
+    setIsRestoredDirty(false);
+    setSaveMessage("Изменения сохранены в профиле.");
+  };
+
+  const handleCalculate = async () => {
+    const ctx = restoredContext.current;
+    const snapshot = formSnapshot(orbits, engine);
+    const dirty = Boolean(ctx && snapshot !== ctx.baseline);
+
+    if (dirty && isAuthenticatedLocally()) {
+      const ok = await runCalculation(orbits, engine, { persistToProfile: false });
+      if (!ok) return;
+      try {
+        await persistAfterChange(orbits, engine);
+      } catch (e) {
+        if (e instanceof SaveAuthError) {
+          navigate(getLoginRedirectUrl(location.pathname));
+          return;
+        }
+        setError(e instanceof Error ? e.message : "Не удалось сохранить изменения.");
+      }
+      return;
+    }
+
+    void runCalculation(orbits, engine, { persistToProfile: true });
+  };
+
+  useEffect(() => {
+    const restore = readSavedRestoreState(location.state);
+    if (!restore || restore.entry.type !== "orbital-transfers" || restoredRef.current) return;
+
+    const sessionKey = getRestoreSessionKey(restore.entry, restore.index);
+    if (!shouldRunRestoreSession(sessionKey)) return;
+
+    restoredRef.current = true;
+    navigate(location.pathname, { replace: true, state: null });
+
+    if (hasOrbitalStoredResult(restore.entry)) {
+      const form = orbitalStartDataToForm(restore.entry.start_date);
+      const baseline = serializeOrbitsForm(form.orbits, form.engine);
+      restoredContext.current = { index: restore.index, baseline };
+      setOrbits(form.orbits);
+      setEngine(form.engine);
+      setResults([
+        {
+          fromOrbit: 1,
+          toOrbit: 2,
+          payload: { start_data: restore.entry.start_date, answer: restore.entry.result },
+        },
+      ]);
+      return;
+    }
+
+    if (typeof restore.entry.start_date === "object" && restore.entry.start_date !== null) {
+      const form = orbitalStartDataToForm(restore.entry.start_date);
+      restoredContext.current = {
+        index: restore.index,
+        baseline: serializeOrbitsForm(form.orbits, form.engine),
+      };
+      setOrbits(form.orbits);
+      setEngine(form.engine);
+      void runCalculation(form.orbits, form.engine, { persistToProfile: false });
+    }
+  }, [location.pathname, location.state, navigate, runCalculation]);
+
+  const handleSave = async () => {
+    if (orbits.length < 2) {
+      setError("Добавьте как минимум две орбиты для сохранения.");
+      return;
+    }
+    if (!isAuthenticatedLocally()) {
+      navigate(getLoginRedirectUrl(location.pathname));
+      return;
+    }
+
+    setSaving(true);
+    setSaveMessage(null);
+    setError(null);
+
+    try {
+      const payloads = collectTransitionPayloads(orbits, engine);
+      const ctx = restoredContext.current;
+      const snapshot = formSnapshot(orbits, engine);
+      const replaceIndex = ctx && snapshot !== ctx.baseline ? ctx.index : undefined;
+      await saveOrbitalTransfers(payloads, { replaceIndex });
+      if (ctx) {
+        restoredContext.current = { index: ctx.index, baseline: snapshot };
+        setIsRestoredDirty(false);
+      }
+      setSaveMessage(
+        replaceIndex !== undefined ? "Изменения сохранены в профиле." : "Расчёт сохранён в профиле.",
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Неизвестная ошибка.");
+      if (e instanceof SaveAuthError) {
+        navigate(getLoginRedirectUrl(location.pathname));
+        return;
+      }
+      setError(e instanceof Error ? e.message : "Не удалось сохранить расчёт.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -487,7 +658,11 @@ export default function OrbitsPage() {
 
             <div className="d-flex align-items-center justify-content-between mt-4 flex-wrap gap-2">
               <div className="d-flex gap-2 align-items-center flex-wrap">
-                <button className="btn btn-dark px-4" onClick={handleCalculate} disabled={loading}>
+                <button
+                  className="btn btn-dark px-4"
+                  onClick={() => void handleCalculate()}
+                  disabled={loading || saving}
+                >
                   {loading ? (
                     <>
                       <span className="spinner-border spinner-border-sm me-2" />
@@ -497,12 +672,28 @@ export default function OrbitsPage() {
                     "Рассчитать"
                   )}
                 </button>
-                <button className="btn btn-outline-danger" onClick={handleClear} disabled={loading}>
+                <button className="btn btn-outline-danger" onClick={handleClear} disabled={loading || saving}>
                   Очистить
                 </button>
               </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleSave()}
+                disabled={loading || saving || orbits.length < 2}
+              >
+                {saving ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" />
+                    Сохранение…
+                  </>
+                ) : (
+                  "Сохранить"
+                )}
+              </button>
             </div>
 
+            {saveMessage && <div className="alert alert-success py-2 mt-3 mb-0">{saveMessage}</div>}
             {error && <div className="alert alert-danger py-2 mt-3 mb-0">{error}</div>}
           </div>
 

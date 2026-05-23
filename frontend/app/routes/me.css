@@ -1,0 +1,36 @@
+.saved-calc-item {
+  background-color: var(--bs-secondary-bg);
+  transition: background-color 0.15s ease-in-out;
+}
+
+.saved-calc-item:hover,
+.saved-calc-item:focus-within {
+  background-color: var(--bs-tertiary-bg);
+}
+
+.saved-calc-item__open,
+.saved-calc-item__actions {
+  background-color: transparent;
+}
+
+.saved-calc-item__open {
+  color: inherit;
+  box-shadow: none;
+}
+
+.saved-calc-item__open:hover,
+.saved-calc-item__open:focus,
+.saved-calc-item__open:active {
+  background-color: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.saved-calc-item__actions .btn-outline-danger {
+  background-color: transparent;
+}
+
+.saved-calc-item:hover .saved-calc-item__actions .btn-outline-danger,
+.saved-calc-item:focus-within .saved-calc-item__actions .btn-outline-danger {
+  background-color: var(--bs-body-bg);
+}

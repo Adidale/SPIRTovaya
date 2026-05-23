@@ -3,7 +3,8 @@
 *.log
 **/dev_verification_links.txt
 
-# Временные файлы SQLite
+# SQLite database files
+**/database.db
 *.db-shm
 *.db-wal
 
