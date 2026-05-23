@@ -7,13 +7,7 @@ from db.session import get_db, AsyncSessionLocal
 from models import User
 from core.security import auth, HashHelper
 from datetime import datetime, timezone, date
-from .schemas import (
-    EmailUpdateSchema,
-    PasswordChangeSchema,
-    UserSchemaLogin,
-    UserSchemaRegister,
-    UsernameUpdateSchema,
-)
+from .schemas import EmailUpdateSchema, PasswordChangeSchema, UserSchemaLogin, UserSchemaRegister, UsernameUpdateSchema
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
 
 
@@ -68,7 +62,7 @@ async def register(data:UserSchemaRegister,
 
         token = auth.create_access_token(uid=str(new_user.id))
         verification_url = f"http://localhost:8000/verify/{token}"
-        print(verification_url)
+        print(f'Подтверждение почты {verification_url}')
 
         try:
             message = MessageSchema(
@@ -143,7 +137,8 @@ async def get_me(user: User = Depends(auth.get_current_subject)):
         'dob':user.dob,
         'description':user.description,
         'active': user.is_active,
-        'created_at': user.created_at
+        'created_at': user.created_at,
+        'last_calc': user.last_calc
     }
 
 @router.post('/me/edit')
