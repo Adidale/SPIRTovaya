@@ -5,6 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { API_BASE_URL, getFastApiErrorDetail } from "~/lib/api";
 
 type OrbitalTransferRequest = {
+  sat_mass: number;
   inclination_1: number;
   inclination_2: number;
   h1: number;
@@ -15,6 +16,7 @@ type OrbitalTransferRequest = {
 
 type OrbitalTransferResponse = {
   start_data: {
+    sat_mass?: number;
     i1: number;
     h1: number;
     i2: number;
@@ -42,6 +44,7 @@ type OrbitInput = {
 };
 
 type EngineInput = {
+  sat_mass: string;
   force: string;
   impulse: string;
 };
@@ -63,7 +66,7 @@ const INITIAL_ORBITS: OrbitInput[] = [
   { eccentricity: "", h: "" },
 ];
 
-const INITIAL_ENGINE: EngineInput = { force: "", impulse: "" };
+const INITIAL_ENGINE: EngineInput = { sat_mass: "", force: "", impulse: "" };
 
 const ORBIT_COLORS = ["#ff6b6b", "#ffd166", "#4cc9f0", "#80ed99", "#c77dff", "#f72585"];
 
@@ -81,14 +84,15 @@ function toRequestPayload(
   const inclination_2 = toNumber(to.eccentricity);
   const h1 = toNumber(from.h);
   const h2 = toNumber(to.h);
+  const sat_mass = toNumber(engine.sat_mass);
   const force = toNumber(engine.force);
   const impulse = toNumber(engine.impulse);
 
-  if ([inclination_1, inclination_2, h1, h2, force, impulse].some((v) => v === null)) {
+  if ([sat_mass, inclination_1, inclination_2, h1, h2, force, impulse].some((v) => v === null)) {
     return null;
   }
 
-  return { inclination_1, inclination_2, h1, h2, force, impulse } as OrbitalTransferRequest;
+  return { sat_mass, inclination_1, inclination_2, h1, h2, force, impulse } as OrbitalTransferRequest;
 }
 
 function formatNumber(value: number, fractionDigits = 4): string {
@@ -192,11 +196,8 @@ export default function OrbitsPage() {
         color: ORBIT_COLORS[idx % ORBIT_COLORS.length],
       });
       const ringMesh = new THREE.Mesh(geometry, material);
-      const inclinationDeg = orbit.eccentricity;
-      const normalizedMod = Math.abs(inclinationDeg % 90);
-      const isMultipleOfNinety = normalizedMod < 1e-6 || Math.abs(normalizedMod - 90) < 1e-6;
-      const specialRotationOffset = isMultipleOfNinety ? Math.PI / 2 : 0;
-      ringMesh.rotation.x = tilt + Math.PI + specialRotationOffset;
+      // Base plane is the equator (XZ); invert sign to match expected visual inclination direction.
+      ringMesh.rotation.x = Math.PI / 2 - tilt;
       ringMesh.userData = { orbitIndex: idx, altitudeScale, tilt, orbitRadius };
       scene.add(ringMesh);
       ringObjects.push(ringMesh);
@@ -432,10 +433,23 @@ export default function OrbitsPage() {
             </div>
 
             <hr className="my-3" />
-            <p className="text-secondary small fw-medium mb-2">Параметры двигателя (общие для всех переходов)</p>
+            <p className="text-secondary small fw-medium mb-2">
+              Параметры аппарата и двигателя
+            </p>
             <div className="row g-2">
               <div className="col-12 col-md-6">
-                <label className="form-label small text-secondary mb-1">Тяга, кг·км/с²</label>
+                <label className="form-label small text-secondary mb-1">Масса аппарата с топливом, кг</label>
+                <input
+                  type="number"
+                  step="any"
+                  className="form-control"
+                  value={engine.sat_mass}
+                  onChange={handleEngineInputChange("sat_mass")}
+                  placeholder="Напр. 6755"
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label small text-secondary mb-1">Тяга, кН</label>
                 <input
                   type="number"
                   step="any"
@@ -445,7 +459,7 @@ export default function OrbitsPage() {
                   placeholder="Напр. 1"
                 />
               </div>
-              <div className="col-12 col-md-6">
+              <div className="col-12 col-md-12">
                 <label className="form-label small text-secondary mb-1">Удельный импульс, км/с</label>
                 <input
                   type="number"
@@ -513,7 +527,8 @@ export default function OrbitsPage() {
                   <div className="fw-semibold">Орбита {hoveredOrbit.index + 1}</div>
                   <div>Высота: {orbits[hoveredOrbit.index]?.h || "—"} км</div>
                   <div>Угол к экватору: {orbits[hoveredOrbit.index]?.eccentricity || "—"}°</div>
-                  <div>Тяга: {engine.force || "—"} кг·км/с²</div>
+                  <div>Масса аппарата: {engine.sat_mass || "—"} кг</div>
+                  <div>Тяга: {engine.force || "—"} кН</div>
                   <div>Импульс: {engine.impulse || "—"} км/с</div>
                 </div>
               )}
@@ -565,7 +580,13 @@ export default function OrbitsPage() {
                     <div>
                       <VarLabel base="h" sub="2" />: {formatNumber(item.payload.start_data.h2)} км
                     </div>
-                    <div>Тяга этапа: {formatNumber(item.payload.start_data.force)} кг·км/с²</div>
+                    <div>
+                      <VarLabel base="m" sub="sat" />:{" "}
+                      {item.payload.start_data.sat_mass !== undefined
+                        ? `${formatNumber(item.payload.start_data.sat_mass)} кг`
+                        : "—"}
+                    </div>
+                    <div>Тяга этапа: {formatNumber(item.payload.start_data.force)} кН</div>
                     <div>Импульс этапа: {formatNumber(item.payload.start_data.impulse)} км/с</div>
                   </div>
                   <div className="d-grid gap-2">

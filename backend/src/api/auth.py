@@ -68,6 +68,7 @@ async def register(data:UserSchemaRegister,
 
         token = auth.create_access_token(uid=str(new_user.id))
         verification_url = f"http://localhost:8000/verify/{token}"
+        print(verification_url)
 
         try:
             message = MessageSchema(
